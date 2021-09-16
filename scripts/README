@@ -14,4 +14,4 @@ This script reads in the waveforms, finds a minimum peak and then integrates aro
 The parameters of the fit can be found in: 
 
 The result of the fit is written to a text file `pmt.txt`:
-    filename    gain    photoelectronResolution peakToValleyRatio
+    filename    q0  s0  q1  s1  mu  gain    photoelectronResolution peakToValleyRatio

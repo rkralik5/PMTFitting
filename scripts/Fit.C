@@ -370,7 +370,7 @@ void Fit(std::string inName){
 	std::cout << "Signal" << h1->Integral(h1->FindFixBin(11),h1->FindFixBin(100)) << std::endl;
 	std::cout << "PE Res " << peRes << std::endl;
 	std::cout << "P2V " << peak2valley << std::endl;
-	std::cout << pmt->GetParameter(0) << "\t" << pmt->GetParameter(1) << "\t" << pmt->GetParameter(2) << "\t" << pmt->GetParameter(3) << std::endl;
+	std::cout << pmt->GetParameter(0) << "\t" << pmt->GetParameter(1) << "\t" << pmt->GetParameter(2) << "\t" << pmt->GetParameter(6) << "\t" << pmt->GetParameter(3) << std::endl;
 
 	// Lets output this to some file
 	std::ofstream outfile;
@@ -378,7 +378,7 @@ void Fit(std::string inName){
 
     outfile.open("pmt.txt", std::ios_base::app); // append instead of overwrite
 
-	outfile << inName << "\t" << gain << "\t" << peRes << "\t" << peak2valley << "\n";
+	outfile << inName << "\t" << pmt->GetParameter(0) << "\t" << pmt->GetParameter(1) << "\t" << pmt->GetParameter(2) << "\t" << pmt->GetParameter(3) << "\t" << gain << "\t" << peRes << "\t" << peak2valley << "\n";
 
 	outfile.close();
 
