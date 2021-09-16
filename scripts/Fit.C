@@ -353,7 +353,7 @@ void Fit(std::string inName){
 	h1->Draw("HIST");
 
 
-	double voltage = (pmt->GetParameter(2)-pmt->GetParameter(0))*1e-3; 
+	double voltage = (pmt->GetParameter(2))*1e-3; 
 	double timeb = 4e-9; // time per bin
 	double charge = timeb*voltage/50;
 	double e = 1.6e-19;
@@ -387,7 +387,7 @@ void Fit(std::string inName){
 
 void Gain(double v){
 
-	double voltage = v;
+	double voltage = v*1e-3;
 	double time = 4e-9; // time per bin
 	double charge = time*voltage/50;
 	double e = 1.6e-19;
