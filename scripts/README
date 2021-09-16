@@ -1,0 +1,17 @@
+
+
+
+For convenience any of the scripts can be run using a bash script.
+    For example:
+        ./RunFitSingle.sh inputFile.root - will run the Fit.C script on a single file.
+        ./RunFit.sh /path/to/files - will look through every file in a directory and run the Fit.C script on the root files it finds. 
+
+
+Fit.C
+
+This script reads in the waveforms, finds a minimum peak and then integrates around that peak. The results are plotted on a histogram and then a fit is run to characterise the  PMT. 
+
+The parameters of the fit can be found in: 
+
+The result of the fit is written to a text file `pmt.txt`:
+    filename    gain    photoelectronResolution peakToValleyRatio

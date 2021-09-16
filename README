@@ -1,0 +1,11 @@
+This program contains the code necessary to process waveform data from the CAEN desktop digitiser.
+
+
+
+waveconvert program is in the convert directory
+    This takes the CAEN xml readout file as an input and outputs a root file.
+
+The scripts used to analyse the waveforms are in the scripts directory
+    These scripts use the converted file (.root) as an input.
+
+

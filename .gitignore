@@ -1,0 +1,6 @@
+convert/waveconvert
+*.root
+*.o
+*.txt
+*.xml
+*.json
