@@ -186,8 +186,8 @@ void ProcessWaveform(std::vector<float> *wx, std::vector<float> *wy, float &totC
 
 	totCharge = countCharge*adcFactor; // voltage in [mV]
 	timePeak = 1e9*minTime/hz; // time in [ns]
-
 }
+
 void FixFit(TF1 *p, TF1 *a ){
 
 	p->FixParameter(0, a->GetParameter(0) );                                            
@@ -208,7 +208,7 @@ void Fit(std::string inName){
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,0,200,7); // x in [0;10], 2 parameters
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,0,200,7); // x in [0;10], 2 parameters
     //give the parameters meaningful names
-    pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "W", "a", "#mu");       
+  pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "W", "a", "#mu");       
 	
 	TFile *input = new TFile(inName.c_str(),"READ");
 
