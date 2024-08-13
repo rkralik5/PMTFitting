@@ -1,26 +1,28 @@
-The wlsconvert program uses the CAEN xml readout file to create a root file for faster processing. 
+This code was originally developed by @mahditaani and later updated by @rkralik5
 
-The program requires ROOT and BOOST to be present on your system
+The waveconvert program uses the CAEN xml readout file to create a root file for faster processing. 
 
-To compile the program make sure you have the ROOTSYS and BOOST environment variables set. 
+The program requires ROOT and BOOST
+
+To compile the program make sure you have the ROOTSYS and BOOST environment variables set.
 The ROOTSYS variable is usually set by sourcing the `thisroot.sh` file from your ROOT installation
 The BOOST environment variable should be set to the directory containing the `boost` directory.
-
 
 Then source `compile.sh` and the program should compile. 
 
 To use the program you should type in the following:
-    
+
     waveconvert inputfile.xml outputfile.root 
 
 This will create two trees with the following structure
 
 device
     frequency   - frequency of sampling the wave
-    maxSamples  - total number of waves 
+    NSamples  - total number of waves 
     resolution  - digitiser ADC resolution
     voltLow     - minimum voltage i.e. value from a reading of 0
     voltHigh    - maximum voltage i.e. value from a readion of `resolution`
 data
-    wavex - the x axis for each wave [time bin can be converted to relevant unit using the frequency value in the device tree]
-    wavey - the y axis for each wave [voltage bin can be converted to voltage using the resolution, voltLow and voltHigh values from the device tree ]
+    wavex - vector of x axis values for each wave representing time in ns 
+    wavey - vector of y axis values for each wave representing recorded voltage in mV
+    clocktime - time of recording of the waveform in units of Unix time in seconds
