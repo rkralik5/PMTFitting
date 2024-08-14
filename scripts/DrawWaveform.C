@@ -3,7 +3,8 @@
 #include "TTree.h"
 #include "TGraph.h"
 #include "TAxis.h"
-#include "TRandom.h"
+#include "TCanvas.h"
+#include "TRandom3.h"
 
 /// @brief Draw a random selection of waveforms from a ROOT file
 /// @param inFileName Name of the input ROOT file
@@ -52,7 +53,7 @@ void DrawWaveform(std::string inFileName,
 		new TCanvas;
 		// Need to conver std::vector to array by calling 1st element
 		TGraph* grWaveform = new TGraph(wavex->size(), &(wavex->at(0)), &(wavey->at(0)));
-		grWaveform->SetTitle("");
+		grWaveform->SetTitle(Form("Waveform_%i",iEntry));
 		grWaveform->GetXaxis()->SetTitle("Time [ns]");
 		grWaveform->GetXaxis()->CenterTitle();
 		grWaveform->GetYaxis()->SetTitle("Output voltage [mV]");
