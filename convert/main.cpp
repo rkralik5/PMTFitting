@@ -94,7 +94,7 @@ void Convert(std::string inName, std::string outName){
 	BOOST_FOREACH(ptree::value_type const& v, pt.get_child("caendigitizer")){
 		iEvent++;
 		if(iEvent%10000 == 0)
-			std::cout << "Event:\t" << iEvent/1000 << "k" << std::endl;
+			std::cout << "Event:\t" << iEvent/1000 << "k\r" << std::flush;
 		
 		if(v.first == "event"){
 			clocktime = v.second.get<int>("<xmlattr>.clocktime", -1);
