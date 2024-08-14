@@ -11,7 +11,9 @@ The BOOST environment variable should be set to the directory containing the `bo
 Then source `compile.sh` and the program should compile. 
 
 To use the program you should type in the following:
-    waveconvert inputfile.xml outputfile.root 
+```
+waveconvert inputfile.xml outputfile.root
+```
 
 This will create two trees with the following structure
 
