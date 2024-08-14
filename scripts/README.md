@@ -9,14 +9,14 @@ For convenience some of the scripts can be run using a bash script.
         ./RunFitSingle.sh inputFile.root - will run the Fit.C script on a single file.
         ./RunFit.sh /path/to/files - will look through every file in a directory and run the Fit.C script on the root files it finds. 
 
-Originally created by @mahditaani and updated by @rkralik5
+Originally created by [@mahditaani](https://github.com/mahditaani) and updated by [@rkralik5](https://github.com/rkralik5)
 
 ## [DrawWaveform](DrawWaveform.C)
 
 Draw a random selection of N waveforms from an input ROOT file using TGraph, save them into an output ROOT file
 
 Run as:
-root 'DrawWaveform.C("inFileName","outFileName",N)'
+    root 'DrawWaveform.C("inFileName","outFileName",N)'
 
 ## [Fit](Fit.C)
 

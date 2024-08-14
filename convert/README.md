@@ -1,4 +1,4 @@
-This code was originally developed by @mahditaani and later updated by @rkralik5
+This code was originally developed by [@mahditaani](https://github.com/mahditaani) and later updated by [@rkralik5](https://github.com/rkralik5)
 
 The waveconvert program uses the CAEN xml readout file to create a root file for faster processing. 
 
@@ -11,7 +11,6 @@ The BOOST environment variable should be set to the directory containing the `bo
 Then source `compile.sh` and the program should compile. 
 
 To use the program you should type in the following:
-
     waveconvert inputfile.xml outputfile.root 
 
 This will create two trees with the following structure

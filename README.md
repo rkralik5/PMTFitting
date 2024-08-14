@@ -1,6 +1,6 @@
 This program contains the code necessary to process waveform data from the CAEN desktop digitiser.
 
-This is a copy of a public repository with the same name from @mahditaani, updated to read waveforms from CAEN CoMPASS and improved fitting for multi-PE data
+This is a copy of a public repository with the same name from [@mahditaani](https://github.com/mahditaani), updated by [@rkralik5](https://github.com/rkralik5) to read waveforms from CAEN CoMPASS and improved fitting for multi-PE data
 
 
 waveconvert program is in the convert directory
@@ -8,5 +8,3 @@ waveconvert program is in the convert directory
 
 The scripts used to analyse the waveforms are in the scripts directory
     These scripts use the converted file (.root) as an input.
-
-
