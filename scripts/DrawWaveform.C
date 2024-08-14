@@ -50,17 +50,17 @@ void DrawWaveform(std::string inFileName,
 		int iEntry = rand.Integer(NEntries);
 		tWaves->GetEntry(iEntry);
     
-		new TCanvas;
+		//new TCanvas;
 		// Need to conver std::vector to array by calling 1st element
-		TGraph* grWaveform = new TGraph(wavex->size(), &(wavex->at(0)), &(wavey->at(0)));
-		grWaveform->SetTitle(Form("Waveform_%i",iEntry));
-		grWaveform->GetXaxis()->SetTitle("Time [ns]");
-		grWaveform->GetXaxis()->CenterTitle();
-		grWaveform->GetYaxis()->SetTitle("Output voltage [mV]");
-		grWaveform->GetYaxis()->CenterTitle();
-		grWaveform->SetName(Form("Waveform_%i",iEntry));
-		grWaveform->GetXaxis()->SetRangeUser(wavex->front(),wavex->back());
-		grWaveform->Draw();
-		grWaveform->Write();
+		TGraph grWaveform(wavex->size(), &(wavex->at(0)), &(wavey->at(0)));
+		grWaveform.SetTitle(Form("Waveform_%i",iPlot));
+		grWaveform.GetXaxis()->SetTitle("Time [ns]");
+		grWaveform.GetXaxis()->CenterTitle();
+		grWaveform.GetYaxis()->SetTitle("Output voltage [mV]");
+		grWaveform.GetYaxis()->CenterTitle();
+		grWaveform.SetName(Form("Waveform_%i",iPlot));
+		grWaveform.GetXaxis()->SetRangeUser(wavex->front(),wavex->back());
+		grWaveform.Draw();
+		grWaveform.Write();
 	}
 }
