@@ -19,7 +19,7 @@
 int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.6e-19;
-int fGate = 10; ///< Integration range for the waveform integration
+int fGate = 50; ///< Integration range for the waveform integration
 
 Double_t factorial(int a){
 	if(a > 1){return a*factorial(a-1);} else return 1;
@@ -79,7 +79,6 @@ std::string GetPMTLabel(std::string inFileName);
 
 
 
-
 /// @brief Main fit function that loads waves, defines fitting functions, does the fits, plots the result and saves it to a csv file
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
@@ -104,7 +103,7 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	}
 
 	// Find the minimum and maximum to fill a histogram
-	auto chargeMinmax = FindChargeMinmax(vecCharge, 3);
+	auto chargeMinmax = FindChargeMinmax(vecCharge, 5);
 	float min = chargeMinmax.first; float max = chargeMinmax.second;
 
 	TH1F *hCharge = new TH1F("charge",
@@ -130,31 +129,32 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	double q1 = (xpeaks[1] > 0) ? xpeaks[1] : 1.; // if second peak not found then set it to one
 
 	TF1 *pmt = new TF1("pmt",PMTF,min,max,7);
+	pmt->SetNpx(1000);	
 	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,7);
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,7);
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,7);
 
   pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu");
 	pmt->SetParameter(0,q0); // Mean of the pedestal
-	pmt->SetParameter(1,0.2); // Sigma of the pedestal
+	pmt->SetParameter(1,0.2*(q1-q0)); // Sigma of the pedestal
 	pmt->SetParameter(2,q1); // Mean of the SPE peak
 	pmt->SetParameter(3,0.3*q1); // Expected SPE resolution is 30%
-	pmt->SetParameter(4,0.88); // Background contribution
-	pmt->SetParameter(5,1e-6);
-	pmt->FixParameter(6,0.2);
+	pmt->SetParameter(4,0.88); // Exponentional background contribution
+	pmt->SetParameter(5,1e-6); // Background decay constant
+	pmt->FixParameter(6,0.2); // "True" number of PE (should be < 1 for SPE)
 
-	pmt->SetParLimits(0,min,max);
-	pmt->SetParLimits(1,0,max);
-	pmt->SetParLimits(2,min,max);
-	pmt->SetParLimits(3,0,max);
+	pmt->SetParLimits(0,min,q1);
+	pmt->SetParLimits(1,0,q1-q0);
+	pmt->SetParLimits(2,q0,max);
+	pmt->SetParLimits(3,0.05*q1,2*q1);
 	pmt->SetParLimits(4,0.,1);
 	pmt->SetParLimits(5,0.,1);
-	pmt->SetParLimits(6,0.001,1.5);
+	pmt->SetParLimits(6,0.01,1.5);
 	
 	gStyle->SetOptStat(0);
 	gStyle->SetOptFit(1);
 
-	hCharge->Fit("pmt","WL R");
+	hCharge->Fit("pmt","E M R");
 
 	double SPECharge = pmt->GetParameter(2);
 	double gain = (SPECharge-pmt->GetParameter(0))*1e-12/e;
@@ -198,17 +198,29 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	std::string PMTLabel = GetPMTLabel(inFileName);
 	CornerLabel(PMTLabel);
 
-
 	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+"_Fit";
-	c.SaveAs((plotFileName+".pdf").c_str());
+	c.SaveAs((plotFileName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 
 	c.SetLogy();
-	c.SaveAs((plotFileName+"_Logy.pdf").c_str());
+	c.SaveAs((plotFileName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 
 	double peak = pmt->Eval(pmt->GetParameter(2));
 	double valley = pmt->GetMinimum(pmt->GetParameter(0), pmt->GetParameter(2));
 	double valleyPos = pmt->GetMinimumX(pmt->GetParameter(0), pmt->GetParameter(2));
 	double peak2valley = peak/valley;
+	double peakHist = hCharge->GetBinContent(hCharge->FindBin(q1));
+	double valleyHist = 2*hCharge->GetBinContent(hCharge->FindBin(q0));
+	int valleyBin = 1;
+	for(int iBin=hCharge->FindBin(q0); iBin<hCharge->FindBin(q1); ++iBin){
+		if(hCharge->GetBinContent(iBin)<valleyHist){
+			valleyHist = hCharge->GetBinContent(iBin);
+			valleyBin = iBin;
+		}
+	}
+	for(int iBin=valleyBin; iBin<hCharge->FindBin(q1)+10; ++iBin){
+		if(hCharge->GetBinContent(iBin)>peakHist)
+			peakHist = hCharge->GetBinContent(iBin);
+	}
 
 	std::cout << "Q1 = " << SPECharge << "pC" << std::endl;
 	std::cout << "Which is equal to a gain of " << gain << std::endl;
@@ -217,6 +229,8 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	std::cout << "PE Res " << peRes << std::endl;
 	std::cout << "Peak " << peak << " and valley " << valley << std::endl;
 	std::cout << "P2V " << peak2valley << std::endl;
+	std::cout << "PeakHist " << peakHist << " and valleyHist " << valleyHist
+						<< " P2VHist " << peakHist/valleyHist << std::endl;
 
 	// Lets output this to some file
 	std::ofstream outfile;
@@ -228,7 +242,9 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 					<< pmt->GetParameter(3) << ","
 					<< gain << ","
 					<< peak2valley << ","
-					<< peRes << "\n";
+					<< peakHist/valleyHist << ","
+					<< peRes << ","
+					<< pmt->GetParameter(6) << "\n";
 	outfile.close();
 	
 	delete hCharge;
