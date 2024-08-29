@@ -1,3 +1,5 @@
+/// This code is old and haven't been updated yet - DO NOT USE!
+
 #include <fstream>
 
 
@@ -22,7 +24,7 @@ void GetMeanStd(std::vector<double> v, double &m, double &d){
  void DarkRate(std::string inFile, double pe = 10.0, double thresh = 1.0){
 	std::ofstream outfile;
 
-  	outfile.open("darkrates.txt", std::ios_base::app); // append instead of overwrite
+  outfile.open("darkrates.txt", std::ios_base::app); // append instead of overwrite
 
 	TFile *input = new TFile (inFile.c_str(), "READ");
 
