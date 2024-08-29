@@ -18,7 +18,7 @@
 #define PI 3.141592654
 int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
-double e = 1.6e-19;
+double e = 1.602e-19;
 int fGate = 50; ///< Integration range for the waveform integration
 
 Double_t factorial(int a){
@@ -92,7 +92,6 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	// Calculate the integrated charges
 	int NEntries = tWaves->GetEntries();
-	//int NEntries = 1000;
 	std::vector<float> vecCharge;
 	vecCharge.reserve(NEntries);
 	for (int i = 0; i < NEntries; i++){ // fill histogram
@@ -262,7 +261,8 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 	int timeBinWidth = wx->at(1) - wx->at(0);
 
 	// Find the minimum voltage
-	// Don't look withing a buffer of 5 bins which would have icomplete signal
+	// Don't look within a 5 bin-wide buffer in beginning and end, which would 
+	// have incomplete signal
 	int minPos = std::distance(wy->begin(),
 														 std::min_element(wy->begin()+5,wy->end()-5));
 	float minCharge = wy->at(minPos);
