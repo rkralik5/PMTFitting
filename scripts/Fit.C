@@ -19,7 +19,8 @@
 int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
-int fGate = 50; ///< Integration range for the waveform integration
+int fPreGate = 3; ///< Number of time bins before peak position to start int
+int fGate = 10; ///< Integration range for the waveform integration in time bins
 
 Double_t factorial(int a){
 	if(a > 1){return a*factorial(a-1);} else return 1;
@@ -29,8 +30,9 @@ Double_t Pois(double mu, double n){
 	return pow(mu,n)*exp(-mu)/factorial(n);
 }
 
-Double_t Gaus(double x, double q, double s, double n){
-	return 1/(s*sqrt(2*PI*n))*exp(-pow(x-n*q,2)/(2*n*pow(s,2)));
+/// @brief Gauss for n PE centered at (x-q0)
+Double_t Gaus(double x, double q0, double q, double s, double n){
+	return 1/(s*sqrt(2*PI*n))*exp(-pow(x-q0-n*q,2)/(2*n*pow(s,2)));
 }
 
 /// @brief Full PMT background function (pedestal and exponential background)
@@ -58,7 +60,9 @@ Double_t PMTF2(Double_t *x_, Double_t *par);
 /// @brief Take parameters from PMT response function a and fix them onto p
 /// @param p Function to fix the paramters onto
 /// @param a Function to take the paramters from
-void FixFit(TF1 *p, TF1 *a );
+void FixFit(TF1 *&p, TF1 *&a);
+
+void SetParametersFromFitResult(TF1*& fOut, TF1*& fIn);
 
 /// @brief Integrate waveform to get a deposited charge
 /// @param wx Input vector of waveform x values (time in ns)
@@ -98,7 +102,7 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
-		vecCharge.push_back(IntegrateCharge(wavex, wavey, 5, fGate));
+		vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
 	}
 
 	// Find the minimum and maximum to fill a histogram
@@ -119,7 +123,7 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	//Use TSpectrum to find the peak candidates
   TSpectrum *s = new TSpectrum(2);
-  Int_t nfound = s->Search(hCharge,0.1,"same",0.00001);
+  Int_t nfound = s->Search(hCharge,5,"same",0.005);
 	std::cout << "Found " << nfound << " peaks" << std::endl;
 	Double_t *xpeaks = s->GetPositionX();
 	for(int i=0; i<nfound; ++i)
@@ -127,34 +131,61 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	double q0 = (xpeaks[0] > 0) ? xpeaks[0] : 0; // if pedestal peak not found then set it to zero
 	double q1 = (xpeaks[1] > 0) ? xpeaks[1] : 1.; // if second peak not found then set it to one
 
-	TF1 *pmt = new TF1("pmt",PMTF,min,max,7);
-	pmt->SetNpx(1000);	
-	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,7);
-	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,7);
-	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,7);
+	TF1 *pmt = new TF1("pmt",PMTF,min,max,8);
+	pmt->SetNpx(10000);	
+	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,8);
+	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
+	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
 
-  pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu");
+  pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu",
+									 "Scaling factor");
 	pmt->SetParameter(0,q0); // Mean of the pedestal
-	pmt->SetParameter(1,0.2*(q1-q0)); // Sigma of the pedestal
+	pmt->SetParameter(1,0.1*(q1-q0)); // Sigma of the pedestal
 	pmt->SetParameter(2,q1); // Mean of the SPE peak
 	pmt->SetParameter(3,0.3*q1); // Expected SPE resolution is 30%
-	pmt->SetParameter(4,0.88); // Exponentional background contribution
-	pmt->SetParameter(5,1e-6); // Background decay constant
-	pmt->FixParameter(6,0.2); // "True" number of PE (should be < 1 for SPE)
+	pmt->SetParameter(4,0.01); // Exponentional background contribution
+	pmt->SetParameter(5,0.1); // Background decay constant
+	pmt->SetParameter(6,0.1); // "True" number of PE (should be < 1 for SPE)
+	pmt->SetParameter(7,10); // Scaling factor - should not be needed but is...
 
 	pmt->SetParLimits(0,min,q1);
-	pmt->SetParLimits(1,0,q1-q0);
+	pmt->SetParLimits(1,0,q1);
 	pmt->SetParLimits(2,q0,max);
 	pmt->SetParLimits(3,0.05*q1,2*q1);
 	pmt->SetParLimits(4,0.,1);
-	pmt->SetParLimits(5,0.,1);
-	pmt->SetParLimits(6,0.01,1.5);
+	pmt->SetParLimits(5,0,10);
+	pmt->SetParLimits(6,0.00001,1.);
+	pmt->SetParLimits(7,0.,1e5);
 	
 	gStyle->SetOptStat(0);
 	gStyle->SetOptFit(1);
 
-	hCharge->Fit("pmt","E M R");
+	hCharge->Fit("pmt","EMR"); //EMR
 
+	//TF1 *pmt_copy =  new TF1("pmt_copy",PMTF,min,max,8);
+	//SetParametersFromFitResult(pmt_copy, pmt);
+	//double alpha = log(0.2)/(pmt->GetParameter(0)-pmt->GetParameter(2));
+	//double w = 0.05*pmt->Eval(pmt->GetParameter(0))/alpha;
+	//pmt_copy->SetParameter(4,w); // Exponentional background contribution
+	//pmt_copy->SetParLimits(4, 0.01*w, 10*w);
+	//pmt_copy->SetParameter(5, alpha); // Background decay constant
+	//pmt_copy->SetParLimits(5, 0.05*alpha, 2*alpha);
+
+	//double valley1 = pmt->GetMinimumX(pmt->GetParameter(0), pmt->GetParameter(2));
+	//double valley1_val = pmt->Eval(valley1);
+	//pmt_copy->SetParLimits(5, 0.1*valley1_val, pmt->Eval(pmt->GetParameter(0)));
+	//hCharge->Fit("pmt_copy","EM","",valley1,2*pmt->GetParameter(2));
+
+	//TF1 *pmt_copy2 =  new TF1("pmt_copy2",PMTF,min,max,7);
+	//SetParametersFromFitResult(pmt_copy2, pmt_copy);
+	//hCharge->Fit("pmt_copy2","EMR");
+
+/*
+	if(pmt->GetParameter(2) < pmt->GetParameter(0)){
+		std::cout << "Single PE mean < Pedestal mean - skip this file" << std::endl;
+		return;
+	}
+*/
 	double SPECharge = pmt->GetParameter(2);
 	double gain = (SPECharge-pmt->GetParameter(0))*1e-12/e;
 	double peRes = pmt->GetParameter(3)/pmt->GetParameter(2); // s1/q1
@@ -187,7 +218,6 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	// Print the voltage
 	std::string VLabel = inFileName.substr(0,inFileName.find_last_of("."));
 	VLabel = VLabel.substr(VLabel.find_last_of("_")+1);
-	std::cout << "VLabel is " << VLabel << std::endl;
 	TText text(.4,.8,("Input: "+VLabel).c_str());
 	text.SetNDC();
 	text.Draw("same");
@@ -272,7 +302,7 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 	int highInt = lowInt+gate;
 	if(highInt >= wy->size()){
 		highInt = wy->size()-1;
-		lowInt = wy->size()-51;
+		lowInt = wy->size()-1-gate;
 	}
 
 	// Make a vector for baseline calculation
@@ -329,7 +359,8 @@ Double_t Ignxe( double x, double q0, double s0, double q1, double s1, double a, 
 	double qn = q0 + n*q1;
 	double sn = sqrt(pow(s0,2) + n*pow(s1,2));
 	
-	return (a/2)*exp( -a*(x-qn-0.5*a*pow(sn,2)) ) * (ROOT::Math::erf( fabs(q0 - qn - pow(sn,2)*a)/(sn*sqrt(2)) ) + TMath::Sign(1,x - qn - pow(sn,2)*a )*ROOT::Math::erf( fabs(x - qn - pow(sn,2)*a)/(sn*sqrt(2))));
+	return (a/2)*exp( -a*(x-qn-a*pow(sn,2)) ) * (ROOT::Math::erf( fabs(q0 - qn - pow(sn,2)*a)/(sn*sqrt(2)) ) + TMath::Sign(1,x - qn - pow(sn,2)*a )*ROOT::Math::erf( fabs(x - qn - pow(sn,2)*a)/(sn*sqrt(2))));
+	//return (a/2)*exp( -a*(x-qn-0.5*a*pow(sn,2)) ) * (ROOT::Math::erf( fabs(q0 - qn - pow(sn,2)*a)/(sn*sqrt(2)) ) + TMath::Sign(1,x - qn - pow(sn,2)*a )*ROOT::Math::erf( fabs(x - qn - pow(sn,2)*a)/(sn*sqrt(2))));
 }
 
 Double_t PMTF(Double_t *x_, Double_t *par){
@@ -342,12 +373,14 @@ Double_t PMTF(Double_t *x_, Double_t *par){
 	double w = par[4];
 	double a = par[5];
 	double mu = par[6];
+	double scale = par[7];
+	double step = x > q0 ? 1 : 0;
 
-	return Pois(mu, 0)*((1-w)*Gaus(x,q0,s0,1) + w*Ignxe(x, q0, s0, q1, s1, a, 0))
-		   + Pois(mu, 1)*((1-w)*Gaus(x,q1,s1,1) + w*Ignxe(x, q0, s0, q1, s1, a, 1))
-			 + Pois(mu, 2)*((1-w)*Gaus(x,q1,s1,2) + w*Ignxe(x, q0, s0, q1, s1, a, 2))
-		   + Pois(mu, 3)*((1-w)*Gaus(x,q1,s1,3) + w*Ignxe(x, q0, s0, q1, s1, a, 3))
-		   + Pois(mu, 4)*((1-w)*Gaus(x,q1,s1,4) + w*Ignxe(x, q0, s0, q1, s1, a, 4));
+	return scale*Pois(mu, 0)*((1-w)*Gaus(x, 0,q0,s0,1) + step*w*a*exp(-a*(x-q0))) +
+				 scale*Pois(mu, 1)*((1-w)*Gaus(x,q0,q1,s1,1) + w*Ignxe(x,q0,s0,q1,s1,a,1)) + 
+				 scale*Pois(mu, 2)*((1-w)*Gaus(x,q0,q1,s1,2) + w*Ignxe(x,q0,s0,q1,s1,a,2)) +
+		     scale*Pois(mu, 3)*((1-w)*Gaus(x,q0,q1,s1,3) + w*Ignxe(x,q0,s0,q1,s1,a,3)) + 
+		     scale*Pois(mu, 4)*((1-w)*Gaus(x,q0,q1,s1,4) + w*Ignxe(x,q0,s0,q1,s1,a,4));
 }
 
 Double_t PMTF0(Double_t *x_, Double_t *par){
@@ -359,8 +392,10 @@ Double_t PMTF0(Double_t *x_, Double_t *par){
 	double w = par[4];
 	double a = par[5];
 	double mu = par[6];
+	double scale = par[7];
+	double step = x > q0 ? 1 : 0;
 
-	return Pois(mu, 0)*((1-w)*Gaus(x,q0,s0,1) + w*Ignxe(x, q0, s0, q1, s1, a, 0));
+	return scale*Pois(mu,0)*((1-w)*Gaus(x,0,q0,s0,1) + step*w*a*exp(-a*(x-q0)));
 }
 
 Double_t PMTF1(Double_t *x_, Double_t *par){
@@ -372,8 +407,9 @@ Double_t PMTF1(Double_t *x_, Double_t *par){
 	double w = par[4];
 	double a = par[5];
 	double mu = par[6];
+	double scale = par[7];
 
-	return Pois(mu, 1)*((1-w)*Gaus(x,q1,s1,1) + w*Ignxe(x, q0, s0, q1, s1, a, 1));
+	return scale*Pois(mu,1)*((1-w)*Gaus(x,q0,q1,s1,1) + w*Ignxe(x,q0,s0,q1,s1,a,1));
 }
 
 Double_t PMTF2(Double_t *x_, Double_t *par){
@@ -385,11 +421,12 @@ Double_t PMTF2(Double_t *x_, Double_t *par){
 	double w = par[4];
 	double a = par[5];
 	double mu = par[6];
+	double scale = par[7];
 
-	return Pois(mu, 2)*((1-w)*Gaus(x,q1,s1,2) + w*Ignxe(x, q0, s0, q1, s1, a, 2));
+	return scale*Pois(mu,2)*((1-w)*Gaus(x,q0,q1,s1,2) + w*Ignxe(x,q0,s0,q1,s1,a,2));
 }
 
-void FixFit(TF1 *p, TF1 *a ){
+void FixFit(TF1 *&p, TF1 *&a){
 	p->FixParameter(0, a->GetParameter(0));
 	p->FixParameter(1, a->GetParameter(1));
 	p->FixParameter(2, a->GetParameter(2));
@@ -397,15 +434,35 @@ void FixFit(TF1 *p, TF1 *a ){
 	p->FixParameter(4, a->GetParameter(4));
 	p->FixParameter(5, a->GetParameter(5));
 	p->FixParameter(6, a->GetParameter(6));
+	p->FixParameter(7, a->GetParameter(7));
+}
+
+void SetParametersFromFitResult(TF1*& fOut, TF1*& fIn){
+	fOut->SetNpx(fIn->GetNpx());
+	
+	for(int i=0; i<fIn->GetNpar(); i++){
+		fOut->SetParameter(i,fIn->GetParameter(i));
+		Double_t parmin = 0.9*fIn->GetParameter(i);
+		Double_t parmax = 1.1*fIn->GetParameter(i);
+		//fIn->GetParLimits(i,parmin,parmax);
+		std::cout << "Parameter " << i
+							<< " is " << fIn->GetParameter(i)
+							<< " between " << parmin
+							<< " and " << parmax
+							<< std::endl;
+		fOut->SetParLimits(i,parmin,parmax);
+	}
 }
 
 std::string GetPMTLabel(std::string inFileName){
-  std::stringstream RestOfLine(inFileName);
-  std::string PMTBrand;
+	// Remove the path from inFileName
+	std::string inFile = inFileName.substr(inFileName.find_last_of("/")+1);
+
 	// Get everything before first _ into PMTBrand
+  std::stringstream RestOfLine(inFile);
+  std::string PMTBrand;
 	getline(RestOfLine, PMTBrand, '_');
-	// Remove path from PMTBrand
-	PMTBrand = PMTBrand.substr(PMTBrand.find_last_of("/")+1);
+	
 	// Second value before _ is the PMTLabel
 	std::string PMTLabel;
 	getline(RestOfLine, PMTLabel, '_');
