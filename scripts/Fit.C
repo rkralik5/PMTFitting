@@ -19,8 +19,8 @@
 int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
-int fPreGate = 3; ///< Number of time bins before peak position to start int
-int fGate = 10; ///< Integration range for the waveform integration in time bins
+int fPreGate = 6; ///< Number of time bins before peak position to start int
+int fGate = 20; ///< Integration range for the waveform integration in time bins
 
 Double_t factorial(int a){
 	if(a > 1){return a*factorial(a-1);} else return 1;
@@ -144,15 +144,15 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	pmt->SetParameter(2,q1); // Mean of the SPE peak
 	pmt->SetParameter(3,0.3*q1); // Expected SPE resolution is 30%
 	pmt->SetParameter(4,0.01); // Exponentional background contribution
-	pmt->SetParameter(5,0.1); // Background decay constant
+	pmt->SetParameter(5,1); // Background decay constant
 	pmt->SetParameter(6,0.1); // "True" number of PE (should be < 1 for SPE)
-	pmt->SetParameter(7,10); // Scaling factor - should not be needed but is...
+	pmt->SetParameter(7,0.1); // Scaling factor - should not be needed but is...
 
 	pmt->SetParLimits(0,min,q1);
 	pmt->SetParLimits(1,0,q1);
 	pmt->SetParLimits(2,q0,max);
 	pmt->SetParLimits(3,0.05*q1,2*q1);
-	pmt->SetParLimits(4,0.,1);
+	pmt->SetParLimits(4,1e-5,10);
 	pmt->SetParLimits(5,0,10);
 	pmt->SetParLimits(6,0.00001,1.);
 	pmt->SetParLimits(7,0.,1e5);
@@ -162,23 +162,27 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	hCharge->Fit("pmt","EMR"); //EMR
 
-	//TF1 *pmt_copy =  new TF1("pmt_copy",PMTF,min,max,8);
-	//SetParametersFromFitResult(pmt_copy, pmt);
-	//double alpha = log(0.2)/(pmt->GetParameter(0)-pmt->GetParameter(2));
-	//double w = 0.05*pmt->Eval(pmt->GetParameter(0))/alpha;
-	//pmt_copy->SetParameter(4,w); // Exponentional background contribution
-	//pmt_copy->SetParLimits(4, 0.01*w, 10*w);
-	//pmt_copy->SetParameter(5, alpha); // Background decay constant
-	//pmt_copy->SetParLimits(5, 0.05*alpha, 2*alpha);
+	TF1 *pmt_copy =  new TF1("pmt_copy",PMTF,min,max,8);
+	SetParametersFromFitResult(pmt_copy, pmt);
+	double alpha = log(0.2)/(pmt->GetParameter(0)-pmt->GetParameter(2));
+	double w = 0.05*pmt->Eval(pmt->GetParameter(0))/alpha;
+	pmt_copy->SetParameter(4, w); // Exponentional background contribution
+	pmt_copy->SetParLimits(4, 0.01*w, 10*w);
+	pmt_copy->SetParameter(5, alpha); // Background decay constant
+	pmt_copy->SetParLimits(5, 0.05*alpha, 2*alpha);
+	pmt_copy->SetParameter(6, 0.1); // Exponentional background contribution
+	pmt_copy->SetParLimits(6, 1e-5, 1);
+	pmt_copy->SetParameter(7, 1); // Background decay constant
+	pmt_copy->SetParLimits(7, 0., 1e3);
 
-	//double valley1 = pmt->GetMinimumX(pmt->GetParameter(0), pmt->GetParameter(2));
-	//double valley1_val = pmt->Eval(valley1);
+	double valley1 = pmt->GetMinimumX(pmt->GetParameter(0), pmt->GetParameter(2));
+	double valley1_val = pmt->Eval(valley1);
 	//pmt_copy->SetParLimits(5, 0.1*valley1_val, pmt->Eval(pmt->GetParameter(0)));
-	//hCharge->Fit("pmt_copy","EM","",valley1,2*pmt->GetParameter(2));
+	hCharge->Fit("pmt_copy","EM","",pmt->GetParameter(0),2*pmt->GetParameter(2));
 
-	//TF1 *pmt_copy2 =  new TF1("pmt_copy2",PMTF,min,max,7);
-	//SetParametersFromFitResult(pmt_copy2, pmt_copy);
-	//hCharge->Fit("pmt_copy2","EMR");
+	TF1 *pmt_copy2 =  new TF1("pmt_copy2",PMTF,min,max,8);
+	SetParametersFromFitResult(pmt_copy2, pmt_copy);
+	hCharge->Fit("pmt_copy2","EMR");
 
 /*
 	if(pmt->GetParameter(2) < pmt->GetParameter(0)){
@@ -442,8 +446,8 @@ void SetParametersFromFitResult(TF1*& fOut, TF1*& fIn){
 	
 	for(int i=0; i<fIn->GetNpar(); i++){
 		fOut->SetParameter(i,fIn->GetParameter(i));
-		Double_t parmin = 0.9*fIn->GetParameter(i);
-		Double_t parmax = 1.1*fIn->GetParameter(i);
+		Double_t parmin = 0.8*fIn->GetParameter(i);
+		Double_t parmax = 1.2*fIn->GetParameter(i);
 		//fIn->GetParLimits(i,parmin,parmax);
 		std::cout << "Parameter " << i
 							<< " is " << fIn->GetParameter(i)
