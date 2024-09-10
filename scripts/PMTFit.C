@@ -86,7 +86,7 @@ std::string GetPMTLabel(std::string inFileName);
 /// @brief Main fit function that loads waves, defines fitting functions, does the fits, plots the result and saves it to a csv file
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
-void Fit(std::string inFileName, std::string outFileName="Output.csv"){
+void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TFile inFile(inFileName.c_str(),"READ");
 	TTree *tWaves = (TTree*)inFile.Get("data");
 	std::vector<float> *wavex = 0;
@@ -121,6 +121,8 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	hCharge->Draw("axis");
 
+	//TODO: #6 Add option to do multi-PE fit as well
+
 	//Use TSpectrum to find the peak candidates
   TSpectrum *s = new TSpectrum(2);
   Int_t nfound = s->Search(hCharge,5,"same",0.005);
@@ -137,6 +139,7 @@ void Fit(std::string inFileName, std::string outFileName="Output.csv"){
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
 
+	// TODO: #5 Get then number of PE from fraction of pedestal
   pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu",
 									 "Scaling factor");
 	pmt->SetParameter(0,q0); // Mean of the pedestal

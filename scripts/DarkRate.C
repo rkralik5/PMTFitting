@@ -1,4 +1,5 @@
-/// This code is old and haven't been updated yet - DO NOT USE!
+// TODO: #3 Add a description of the script
+// TODO: #4 Make sure this works
 
 #include <fstream>
 #include <vector>

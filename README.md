@@ -8,3 +8,5 @@ waveconvert program is in the convert directory
 
 The scripts used to analyse the waveforms are in the scripts directory
     These scripts use the converted file (.root) as an input.
+
+#TODO: #2 Update the general README description

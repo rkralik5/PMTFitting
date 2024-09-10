@@ -8,7 +8,7 @@ if [ "${1: -4}" == "root"  ]
 			then
 				echo "Converted data exists."
 				echo ${nameroot}
-				root -l -b -q 'Fit.C("'${nameroot}'","'${2}'")'
+				root -l -b -q 'PMTFit.C("'${nameroot}'","'${2}'")'
 		fi
 	else
 		echo "Wave data does not exist, skipping directory."
