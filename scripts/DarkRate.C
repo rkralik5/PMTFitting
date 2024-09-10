@@ -1,123 +1,90 @@
 /// This code is old and haven't been updated yet - DO NOT USE!
 
 #include <fstream>
+#include <vector>
+#include <iostream>
+#include <algorithm>
+#include <cmath>
+#include <string>
+#include <sstream>
+#include <TFile.h>
+#include <TTree.h>
+#include <TMath.h>
+#include <TH1.h>
 
+#define NThresholds 20
 
-void GetMeanStd(std::vector<double> v, double &m, double &d){
+/// @brief Check whether a waveform has a signal above a threshold
+/// @param wy waveform y values in mV
+/// @param threshold threshold value in mV
+/// @return boolean whether the waveform has a signal above the threshold
+bool IsAboveThreshold(std::vector<float> *&wy, int threshold);
 
-	double mean = 0;
-	for (int i = 0; i < v.size(); i++){
-		mean += v[i];
-	}
-	mean /= (double)v.size();
-
-	double dev = 0;
-	for (int i = 0; i < v.size(); i++){
-		dev+= (v[i] - mean)*(v[i] - mean);
-	}
-
-	m = mean;
-	d = sqrt(dev/v.size());
-
-}
-
- void DarkRate(std::string inFile, double pe = 10.0, double thresh = 1.0){
-	std::ofstream outfile;
-
-  outfile.open("darkrates.txt", std::ios_base::app); // append instead of overwrite
-
-	TFile *input = new TFile (inFile.c_str(), "READ");
-
-	TTree *tDevice = (TTree*) input->Get("device");
-	TTree *tWaves = (TTree*) input->Get("data");
-
-	float frequency;
-	int maxSamples;
-	int resolution;
-	float voltLow;
-	float voltHigh;
-	std::vector<float> *wavex = 0;
+void DarkRate(std::string inFileName, std::string outFileName="OutputDR.csv"){
+	TFile inFile(inFileName.c_str(),"READ");
+	TTree *tWaves = (TTree*)inFile.Get("data");
 	std::vector<float> *wavey = 0;
-	int time;
-
-	tDevice->SetBranchAddress("frequency",&frequency);
-	tDevice->SetBranchAddress("maxSamples",&maxSamples);
-	tDevice->SetBranchAddress("resolution",&resolution);
-	tDevice->SetBranchAddress("voltLow",&voltLow);
-	tDevice->SetBranchAddress("voltHigh",&voltHigh);
-
-	tWaves->SetBranchAddress("wavex", &wavex);
+	int clocktime = -1;
 	tWaves->SetBranchAddress("wavey", &wavey);
-	tWaves->SetBranchAddress("time", &time);
-	
-	tDevice->GetEntry(0); // frequency and maxSamples only set once
+	tWaves->SetBranchAddress("clocktime", &clocktime);
 
-	float adcFactor = (voltHigh - voltLow)*1000/resolution; // Multiply by adc counts to get voltage [mV]
-
-
-
-	int width = 5;
-	int dark = 0;
-	double timef = 0;
+	std::vector<int> thresholds;
+	for(int i=1; i<NThresholds+1; i++) thresholds.push_back(0.5*i);
 	
 	std::cout << "Entries:\t" << tWaves->GetEntries() << std::endl;
-	
-	std::vector<double> darkVals;
+	int darkVals[NThresholds];
+	std::vector<int> clocktimes[NThresholds];
 	// Now we loop over the events
-	for (int c = 0; c < tWaves->GetEntries(); c++){
-
-		tWaves->GetEntry(c);
-		int size = wavey->size();
-		timef += (double)(4e-9)*size;
-		
-		if (c % 100000 == 0 || c == tWaves->GetEntries() -1){
-			darkVals.push_back((double)dark/timef);
-	
-			dark = 0;
-			timef = 0;
-		}
-
-		bool belowThreshold = true;
-
-		
-		
-
-		if (c == 0) {std::cout << "Size:\t" << size << std::endl;}
-
-		double baseline = 0;
-
-		for (int i = 0; i < size; i++){
-			baseline += wavey->at(i);
-		}
-		baseline /= (double)(size);
-
-
-		for (int i = 0; i < size - width; i++){
-
-			double sum = 0;
-
-			for (int j = 0; j < width; j++){
-				sum += wavey->at(i+j) - baseline;
+	for(int iWave = 0; iWave < tWaves->GetEntries(); iWave++){
+		tWaves->GetEntry(iWave);
+		for(int iThreshold = 0; iThreshold < NThresholds; iThreshold++){
+			if(IsAboveThreshold(wavey, thresholds.at(iThreshold))){
+				darkVals[iThreshold]++;
+				clocktimes[iThreshold].push_back(clocktime);
 			}
-
-			sum*=adcFactor;
-
-			if (belowThreshold){
-				if ( sum >= pe*thresh ) { dark++; belowThreshold = false; }
-			} else {
-				if (sum < pe*thresh){belowThreshold = true;}
-			}
-			
 		}
-			    
+		if(iWave%10000 == 0)
+			std::cout << "Processed:\t" << iWave/10000 
+								<< "0k waveforms\r" << std::flush;
 	}
 
+	std::ofstream outfile;
+  outfile.open(outFileName.c_str(),
+							 std::ios_base::app); // append instead of overwrite
+	TH1F hClockTimes[NThresholds];
+	for(int iThreshold = 0; iThreshold < NThresholds; iThreshold++){
+		double darkRate = (double)darkVals[iThreshold]/(double)tWaves->GetEntries();
+		std::cout << "Threshold" << thresholds[iThreshold]
+							<< " with a Dark Rate = " << darkRate
+							<< std::endl;
+		outfile << thresholds[iThreshold] << "," << darkRate << "\n";
+		
+		// Create a TH1 histogram with 1s binning from clocktimes
+		int minTime = *std::min_element(clocktimes[iThreshold].begin(), clocktimes[iThreshold].end());
+		int maxTime = *std::max_element(clocktimes[iThreshold].begin(), clocktimes[iThreshold].end());
+		int nBins = maxTime - minTime;
+		std::cout << "minTime = " << minTime << " and maxTime = " << maxTime << std::endl;
+		hClockTimes[iThreshold] = TH1F(Form("hClockTimes_%d",iThreshold),
+																	 Form("Clock Times for Threshold %d",thresholds[iThreshold]),
+																	 nBins, minTime, maxTime);
+	}
+	outfile.close();
+	inFile.Close();
+	delete tWaves;
+}
 
-	double rateMean = 0;
-	double rateSTD = 0;
-	GetMeanStd(  darkVals, rateMean, rateSTD);
-	std::cout << "DR = " << rateMean << "+-" << rateSTD << std::endl;
-	outfile << inFile << "\t" << rateMean << "\t" << rateSTD << "\n";  
+bool IsAboveThreshold(std::vector<float> *&wy, int threshold){
+	// Calculate the baseline as a truncated mean of 50% of values outside the gate
+	std::sort(wy->begin(),wy->end());
+	float baseline = 0;
+	int nBaseline = 0;
+	for(int iBln=wy->size()/4; iBln<(3/4)*wy->size(); iBln++){
+		baseline += wy->at(iBln);
+		nBaseline++;
+	}
+	baseline /= (float)nBaseline;
 
- }
-
+	float minimum = wy->back();
+	if(baseline - minimum > threshold) return true;
+	return false;
+}
