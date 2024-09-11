@@ -1,12 +1,21 @@
-This program contains the code necessary to process waveform data from the CAEN desktop digitiser.
+This repository contains ROOT-based code designed for processing and analysing
+PMT waveform data from the CAEN desktop digitiser.
 
-This is a copy of a public repository with the same name from [@mahditaani](https://github.com/mahditaani), updated by [@rkralik5](https://github.com/rkralik5) to read waveforms from CAEN CoMPASS and improved fitting for multi-PE data
+The code currently works with outputs from the CAEN Scope software. In the
+future, the plan is to update it to also work with CoMPASS.
 
+This repository was copied from an original public repository with the same
+name from [@mahditaani][mahdiTaaniLink] and upgraded by
+[@rkralik5][robertkralik]
 
-waveconvert program is in the convert directory
-    This takes the CAEN xml readout file as an input and outputs a root file.
+The structure of the repository is as follows:
+# [convert](convert)
+Convert outputs from the CAENScope software (in the form of xml files) into
+ROOT files.
 
-The scripts used to analyse the waveforms are in the scripts directory
-    These scripts use the converted file (.root) as an input.
+# [scripts](scripts)
+Analysis scripts for waveform integration, dark rate analysis, or plotting.
+These scripts use the ROOT files from [convert](convert) as inputs
 
-#TODO: #2 Update the general README description
+[robertkralik]: https://github.com/rkralik5
+[mahdiTaaniLink]: https://github.com/mahditaani
