@@ -1,5 +1,3 @@
-// TODO: #1 Make this work with mutliple channels
-
 // C++ Includes
 #include <iostream>
 
@@ -11,31 +9,20 @@
 // ROOT Includes
 #include "TTree.h"
 #include "TFile.h"
+#include "TArrayS.h"
 
 /// @brief Convert output of CAENScopt waveform values to vectors
-/// @param line String of space separated waveform value
-/// @param timeRes Resolution of the time bins
-/// @param voltRes Resolution of the voltage bins
-/// @param px Output vector of x values (time in ns)
-/// @param py Output vector of y values (voltage in mV)
-void PlotPoints(std::string line, float timeRes, float voltRes, std::vector<float> &px, std::vector<float> &py){
+/// @param line String of space separated waveform values
+/// @param Samples Output TArrayS of waveform values
+void PlotPoints(std::string line, TArrayS &Samples){
 	/// Which time bin
-	int timeBin = 0;
+	int iBin = 0;
   /// Store the rest of the line that's yet to be processed
   std::stringstream RestOfLine(line);
   /// Hold each value
   std::string value;
-
   // Loop through space separated waveform bin values
-  while(getline(RestOfLine, value, ' ')){
-		//float val = std::stof(value);
-		float time = (float)(timeBin)*timeRes;
-		//float voltage = (float)val;
-		float voltage = std::stof(value)*voltRes;
-		px.push_back(time);
-		py.push_back(voltage);
-		timeBin++;
-  }
+  while(getline(RestOfLine, value, ' ')) Samples[iBin++] = std::stoi(value);
 }
 
 void Convert(std::string inName, std::string outName){
@@ -46,26 +33,19 @@ void Convert(std::string inName, std::string outName){
   read_xml(is, pt);
 	TFile *fOut = new TFile(outName.c_str(),"RECREATE");
 
-	float frequency = -1;
-	int NSamples = -1;
-	int resolution = -1;
-	float voltLow = -1;
-	float voltHigh = -1;
-	std::vector<float> wavex;
-	std::vector<float> wavey;
-	int clocktime = -1;
-
- 	TTree *tDevice = new TTree("device","Device Settings");
+	float frequency = -1; ///< Frequency of the digitiser
+	int NSamples = -1; ///< Total number of samples
+	int WSize = -1; ///< Size of the waveform (number of time bins)
+	int resolution = -1; ///< Number of ADC bins (=2^ADCResolution)
+	float voltLow = -1; ///< Voltage range low
+	float voltHigh = -1; ///< Voltage range high
+ 	TTree *tDevice = new TTree("Device","Device Settings");
   tDevice->Branch("frequency", &frequency, "Frequency/F");
 	tDevice->Branch("NSamples",  &NSamples,  "NSamples/I");
+	tDevice->Branch("WSize",     &WSize,     "WaveformSize/I");
 	tDevice->Branch("resolution",&resolution,"TimeResolution/I");
 	tDevice->Branch("voltLow",   &voltLow,   "VoltageLow/F");
 	tDevice->Branch("voltHigh",  &voltHigh,  "VoltageHigh/F");
-
-	TTree *tWaves = new TTree("data","Wave Data");
-	tWaves->Branch("wavex",    &wavex);
-	tWaves->Branch("wavey",    &wavey);
-	tWaves->Branch("clocktime",&clocktime,"Clocktime/I");
 
 	// Read in some basic digitiser information
 	BOOST_FOREACH(ptree::value_type const& v, pt.get_child("caendigitizer.digitizer")){
@@ -84,28 +64,43 @@ void Convert(std::string inName, std::string outName){
 	    voltHigh = v.second.get<double>("<xmlattr>.hi", -1);
     }
 	}
+	BOOST_FOREACH(ptree::value_type const& v, pt.get_child("caendigitizer.settings")){
+		if(v.first == "window"){
+			WSize = v.second.get<int>("<xmlattr>.size", -1);
+		}
+	}
 	tDevice->Fill(); // Only fill once per file
 
-	/// Convert time bins into units of ns
-	float timeResolution = 1E9/frequency;
-	/// Convert voltage bins into units of mV
-	float voltResolution = (voltHigh - voltLow)*1000/resolution;
+	short Channel = -1; ///< Channel number
+	long long int Timestamp = -1; ///< Timestamp of the event from start of run
+	long long int Clocktime = -1; ///< Clocktime of the event (in Unix time)
+	TArrayS Samples; ///< Array of samples (waveform values)
+	TTree *tWaves = new TTree("Data","Wave Data");
+	tWaves->Branch("Channel",  &Channel,  "Channel/S");
+	tWaves->Branch("Timestamp",&Timestamp,"Timestamp/I");
+	tWaves->Branch("Clocktime",&Clocktime,"Clocktime/I");
+	tWaves->Branch("Samples",  &Samples);
 
-	int iEvent = 0;
-	// Now we loop over the individual waveforms
+	// Loop over the events
 	BOOST_FOREACH(ptree::value_type const& v, pt.get_child("caendigitizer")){
-		iEvent++;
-		if(iEvent%10000 == 0)
-			std::cout << "Event:\t" << iEvent/1000 << "k\r" << std::flush;
-		
 		if(v.first == "event"){
-			clocktime = v.second.get<int>("<xmlattr>.clocktime", -1);
+			int id = v.second.get<int>("<xmlattr>.id", -1);
+			if(id%10000 == 0)
+				std::cout << "Event:\t" << id/1000 << "k\r" << std::flush;
 
-			wavex.clear();
-			wavey.clear();
-			PlotPoints(v.second.get<std::string>("trace"), timeResolution, 		   voltResolution, wavex, wavey);
-			tWaves->Fill(); // Fill for each event
-    }
+			Timestamp = v.second.get<int>("<xmlattr>.timestamp", -1);
+			Clocktime = v.second.get<int>("<xmlattr>.clocktime", -1);
+			// Loop over the channels containing a waveform
+			for(auto& t : v.second){
+				if(t.first == "trace"){
+					Samples.Reset();
+					Samples.Set(WSize);
+					Channel = t.second.get<int>("<xmlattr>.channel", -1);
+					PlotPoints(t.second.data(), Samples);
+					tWaves->Fill();
+				}
+			}
+		}
   }
 
 	fOut->Write();
