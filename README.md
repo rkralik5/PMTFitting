@@ -1,7 +1,6 @@
-This repository contains ROOT-based code designed for processing and analysing\
-PMT waveform data from the CAEN desktop digitiser.
+This repository contains ROOT-based code designed for processing and analysing PMT waveform data from the CAEN desktop digitiser.
 
-The code currently works with outputs from the CAEN Scope software. In the\
+The code currently works with outputs from the CAEN Scope software. In the
 future, the plan is to update it to also work with CoMPASS.
 
 This repository was copied from an original public repository with the same\
