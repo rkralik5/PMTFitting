@@ -1,6 +1,3 @@
-// TODO: #3 Add a description of the script
-// TODO: #4 Make sure this works
-
 /// @brief Script to calculate the dark rate of a channel using the ROOT files from waveconvert or from CoMPASS
 
 #include <fstream>
