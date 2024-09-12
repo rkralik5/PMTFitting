@@ -14,7 +14,7 @@
 /// @brief Convert output of CAENScopt waveform values to vectors
 /// @param line String of space separated waveform values
 /// @param Samples Output TArrayS of waveform values
-void PlotPoints(std::string line, TArrayS &Samples){
+void PlotPoints(std::string line, TArrayS *&Samples){
 	/// Which time bin
 	int iBin = 0;
   /// Store the rest of the line that's yet to be processed
@@ -22,10 +22,12 @@ void PlotPoints(std::string line, TArrayS &Samples){
   /// Hold each value
   std::string value;
   // Loop through space separated waveform bin values
-  while(getline(RestOfLine, value, ' ')) Samples[iBin++] = std::stoi(value);
+  while(getline(RestOfLine, value, ' '))
+		Samples->SetAt(std::stoi(value), iBin++);
 }
 
 void Convert(std::string inName, std::string outName){
+	std::cout << "Converting " << inName << " to " << outName << std::endl;
 	// Populate tree structure pt
   using boost::property_tree::ptree;
   ptree pt;
@@ -71,10 +73,10 @@ void Convert(std::string inName, std::string outName){
 	}
 	tDevice->Fill(); // Only fill once per file
 
-	short Channel = -1; ///< Channel number
+	UShort_t Channel = -1; ///< Channel number
 	long long int Timestamp = -1; ///< Timestamp of the event from start of run
 	long long int Clocktime = -1; ///< Clocktime of the event (in Unix time)
-	TArrayS Samples; ///< Array of samples (waveform values)
+	TArrayS* Samples; ///< Array of samples (waveform values)
 	TTree *tWaves = new TTree("Data","Wave Data");
 	tWaves->Branch("Channel",  &Channel,  "Channel/S");
 	tWaves->Branch("Timestamp",&Timestamp,"Timestamp/I");
@@ -93,8 +95,8 @@ void Convert(std::string inName, std::string outName){
 			// Loop over the channels containing a waveform
 			for(auto& t : v.second){
 				if(t.first == "trace"){
-					Samples.Reset();
-					Samples.Set(WSize);
+					Samples->Reset();
+					Samples->Set(WSize);
 					Channel = t.second.get<int>("<xmlattr>.channel", -1);
 					PlotPoints(t.second.data(), Samples);
 					tWaves->Fill();

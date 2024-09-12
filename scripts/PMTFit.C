@@ -87,6 +87,7 @@ std::string GetPMTLabel(std::string inFileName);
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
 void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
+	//TODO: #9 Update this function to work with new ROOT files
 	TFile inFile(inFileName.c_str(),"READ");
 	TTree *tWaves = (TTree*)inFile.Get("data");
 	std::vector<float> *wavex = 0;
