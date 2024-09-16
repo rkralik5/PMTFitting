@@ -1,4 +1,5 @@
 /// @brief Script to calculate the dark rate of a channel using the ROOT files from waveconvert or from CoMPASS
+/// @author: Robert Kralik kralikrobo@gmail.com (2024) @rkralik5
 
 #include <fstream>
 #include <vector>
@@ -12,9 +13,9 @@
 #include <TMath.h>
 #include <TH1.h>
 #include <TArrayS.h>
-#include <TGraph.h>
 
 #define NThresholds 20 ///< Number of thresholds to check
+#define fNSecPerBin 60 ///< Number of seconds per bin
 
 // If using CoMPASS outputs need to set these values manually
 #define fResolution 500 ///< Number of ADC bins (=2^ADCResolution)
@@ -43,10 +44,12 @@ std::vector<float> BaselineCorrection(TArrayS *&Samples, float ADCTomV);
 
 /// @brief Main script that calculates the dark rate of a channel
 /// @param inFileName input ROOT file with waveforms
-/// @param outFileName output ROOT file with histograms for each threshold
+/// @param outFileName output file name with histograms and dark rates for each threshold
 /// @param iChannel number of the channel to calculate the dark rate for
 void DarkRate(std::string inFileName,
-						  std::string outFileName="OutputDR.root", int iChannel = 0){
+							std::string outROOTName="DarkRateOutput.root",
+							std::string outCSVName="DarkRateOutput.csv",
+							int iChannel = 0){
 	std::cout << "Calculating the dark rate for channel " << iChannel << std::endl;
 	
 	TFile* inFile = new TFile(inFileName.c_str(),"READ");
@@ -79,7 +82,9 @@ void DarkRate(std::string inFileName,
 	beginning = Clocktime;	
 	tWaves->GetEntry(tWaves->GetEntries()-1);
 	end = Clocktime;
-	int nBins = end - beginning; // 1 second per bin
+	int nBins = std::ceil((end - beginning)/fNSecPerBin); // 1 minute per bin
+	std::cout << "Time range:\t" << beginning << " - " << end << std::endl;
+	std::cout << "Number of bins:\t" << nBins << std::endl;
 	// Create dark rate histograms for each threshold
 	TH1F *hDarkRate[NThresholds];
 	for(int iThreshold = 0; iThreshold < NThresholds; iThreshold++){
@@ -120,24 +125,31 @@ void DarkRate(std::string inFileName,
 	}
 
 	// Transform the histogram from counts to dark rate per second and save
-	TFile *outFile = new TFile(outFileName.c_str(),"RECREATE");
+	TFile *outFileROOT = new TFile(outROOTName.c_str(),"RECREATE");
 	for(auto h : hDarkRate){
+		h->Sumw2();
 		h->Divide(&hWaveforms);
 		h->Scale(1./waveSize);
 		h->Write();
 	}
-	outFile->Close();
+	outFileROOT->Close();
 
-	float activeTime = NWaveforms*waveSize;
-	std::cout << "Active time = " << activeTime << " s" << std::endl;
-	std::cout << "NWaves = " << NWaveforms << std::endl;
+	// Print the dark rates to a csv file
+	std::ofstream outFileCSV;
+  outFileCSV.open(outCSVName.c_str(),
+							 		std::ios_base::app); // append instead of overwrite
+	outFileCSV << outROOTName << ",";
 	for(int iThreshold = 0; iThreshold < NThresholds; iThreshold++){
 		double darkRate = (double)darkVals[iThreshold]/(NWaveforms*waveSize);
+		double darkRateError = TMath::Sqrt(darkVals[iThreshold])/(NWaveforms*waveSize);
+		outFileCSV << darkRate << "," << darkRateError << ",";
 		std::cout << "Threshold " << thresholds[iThreshold]
-							<< " with a Dark Rate = " << darkRate
-							<< " Hz, corresponding to " << darkVals[iThreshold]
+							<< " with a Dark Rate = (" << darkRate
+							<< " +/- " << darkRateError
+							<< ") Hz, corresponding to " << darkVals[iThreshold]
 							<< std::endl;
 	}
+	outFileCSV << std::endl;
 	delete tWaves;
 	inFile->Close();
 }
