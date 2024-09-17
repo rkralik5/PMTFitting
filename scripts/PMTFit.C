@@ -20,7 +20,14 @@ int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
 int fPreGate = 6; ///< Number of time bins before peak position to start int
-int fGate = 50; ///< Integration range for the waveform integration in time bins
+int fGate = 100; ///< Integration range for the waveform integration in time bins
+
+// If using CoMPASS outputs need to set these values manually
+#define fResolution 500 ///< Number of ADC bins (=2^ADCResolution)
+#define fVoltLow 0.f ///< Voltage range low
+#define fVoltHigh 2.f ///< Voltage range high
+#define fFrequency 500e6 ///< Frequency of the digitiser in Hz
+#define fWindowSize 600 ///< Size of the waveform (number of time bins)
 
 Double_t factorial(int a){
 	if(a > 1){return a*factorial(a-1);} else return 1;
@@ -34,6 +41,18 @@ Double_t Pois(double mu, double n){
 Double_t Gaus(double x, double q0, double q, double s, double n){
 	return 1/(s*sqrt(2*PI*n))*exp(-pow(x-q0-n*q,2)/(2*n*pow(s,2)));
 }
+
+/// @brief Get the conversion factor of ADC bins to mV and the size of the waveform in seconds
+/// @param inFile Input ROOT file - if it has a Device TTree, it will use the values from there
+/// @param ADCTomV Return conversion factor from ADC bins to mV
+/// @param timeBinWidth Return width of the time bin in nanoseconds
+/// @param resolution Number of ADC bins (=2^ADCResolution)
+/// @param voltLow Voltage range low
+/// @param voltHigh Voltage range high
+/// @param frequency Frequency of the digitiser in Hz
+/// @param WindowSize Size of the waveform (number of time bins)
+void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
+							 int resolution = -1, float voltLow = -1, float voltHigh = -1, float frequency = -1);
 
 /// @brief Full PMT background function (pedestal and exponential background)
 /// @param x Input
@@ -64,13 +83,23 @@ void FixFit(TF1 *&p, TF1 *&a);
 
 void SetParametersFromFitResult(TF1*& fOut, TF1*& fIn);
 
-/// @brief Integrate waveform to get a deposited charge
+/// @brief Integrate waveform to get a deposited charge using old input - kept for backwards compatibility
 /// @param wx Input vector of waveform x values (time in ns)
 /// @param wy Input vector of waveform y values (voltage in mV)
 /// @param preGate Length of time to integrate before the peak in bins of time. Default 5
 /// @param gate Length of time to integrate from preGate in bins of time. Default 50
 /// @return Inegrated charge in pC
 float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
+										  int preGate=5, int gate=50);
+
+/// @brief Integrate waveform to get a deposited charge
+/// @param Samples Input TArrayS of waveform values (output from waveconvert)
+/// @param ADCTomV Conversion factor from ADC bins to mV
+/// @param timeBinWidth Width of the time bin in nanoseconds
+/// @param preGate Length of time to integrate before the peak in bins of time. Default 5
+/// @param gate Length of time to integrate from preGate in bins of time. Default 50
+/// @return Inegrated charge in pC
+float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 										  int preGate=5, int gate=50);
 
 std::pair<float,float> FindChargeMinmax(std::vector<float> &vecCharge,
@@ -87,13 +116,25 @@ std::string GetPMTLabel(std::string inFileName);
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
 void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
-	//TODO: #9 Update this function to work with new ROOT files
-	TFile inFile(inFileName.c_str(),"READ");
-	TTree *tWaves = (TTree*)inFile.Get("data");
-	std::vector<float> *wavex = 0;
-	std::vector<float> *wavey = 0;
-	tWaves->SetBranchAddress("wavex", &wavex);
-	tWaves->SetBranchAddress("wavey", &wavey);
+	TFile* inFile = new TFile(inFileName.c_str(),"READ");
+	// Get the parameters of the digitiser
+	float ADCTomV;
+	float timeBinWidth;
+	GetParams(inFile, ADCTomV, timeBinWidth,
+					  fResolution, fVoltLow, fVoltHigh, fFrequency);
+	
+	TTree *tWaves = (TTree*)inFile->Get("Data");
+	//std::vector<float> *wavex = 0;
+	//std::vector<float> *wavey = 0;
+	//tWaves->SetBranchAddress("wavex", &wavex);
+	//tWaves->SetBranchAddress("wavey", &wavey);
+
+	//Short_t Channel = -1; ///< Channel number
+	int Clocktime = -1; ///< Clocktime of the event (in Unix time)
+	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
+	//tWaves->SetBranchAddress("Channel", &Channel);
+	tWaves->SetBranchAddress("Clocktime", &Clocktime);
+	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
 	int NEntries = tWaves->GetEntries();
@@ -103,7 +144,9 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
-		vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
+		//vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
+		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
+																				fPreGate,	fGate));
 	}
 
 	// Find the minimum and maximum to fill a histogram
@@ -301,6 +344,32 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 
 ///////////////////////////////////////////////////////////////////////////////
 ///  START OF FUNCTION DEFINITIONS
+void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
+							 int resolution = -1, float voltLow = -1, float voltHigh = -1, float frequency = -1){
+	TTree *tDevice = (TTree*)inFile->Get("Device");
+	// Check if the TTree was loaded correctly
+	if(tDevice == nullptr){
+		if(resolution == -1 || voltLow == -1 || voltHigh == -1 ||
+			 frequency == -1){
+			std::cerr << "Could not load the Device TTree" << std::endl;
+			std::cerr << "You have to input the values manually" << std::endl;
+			return;
+		}else{
+			ADCTomV = (float)(voltHigh - voltLow)*1000/(float)resolution;
+			timeBinWidth = 1./frequency;
+			return;
+		}
+	}
+
+	tDevice->SetBranchAddress("resolution", &resolution);
+	tDevice->SetBranchAddress("voltLow", &voltLow);
+	tDevice->SetBranchAddress("voltHigh", &voltHigh);
+	tDevice->SetBranchAddress("frequency", &frequency);
+	tDevice->GetEntry(0);
+	ADCTomV = (voltHigh - voltLow)*1000/resolution;
+	timeBinWidth = 1e9/frequency;
+}
+
 float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 										  int preGate, int gate){
 	int timeBinWidth = wx->at(1) - wx->at(0);
@@ -342,6 +411,59 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 	float charge = 0;
 	for(int iSample = lowInt; iSample < highInt; ++iSample){
 		charge += baseline - wy->at(iSample);
+	}
+	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
+
+	return charge;
+}
+
+float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
+										  int preGate, int gate){
+	// Convert waveform to vector for easier manipulation
+	std::vector<float> vecSamples;
+	vecSamples.reserve(Samples->GetSize());
+	for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
+		vecSamples.push_back(ADCTomV*Samples->At(iSample));
+	}
+
+	// Find the minimum voltage
+	// Don't look within a 5 bin-wide buffer in beginning and end, which would 
+	// have incomplete signal
+	int minPos = std::distance(vecSamples.begin(),
+														 std::min_element(vecSamples.begin()+5,
+														 									vecSamples.end()-5));
+	float minCharge = vecSamples.at(minPos);
+
+	// Get the integration range
+	int lowInt = minPos>preGate ? minPos - preGate : 0;
+	int highInt = lowInt+gate;
+	if(highInt >= vecSamples.size()){
+		highInt = vecSamples.size()-1;
+		lowInt = vecSamples.size()-1-gate;
+	}
+
+	// Make a vector for baseline calculation
+	std::vector<float> vBaseline;
+	vBaseline.reserve(vecSamples.size()-gate);
+	for(auto i=0; i<vecSamples.size(); i++){
+		if(i>=lowInt && i<highInt) continue;
+		vBaseline.push_back(vecSamples.at(i));
+	}
+
+	// Calculate the baseline as a truncated mean of 50% of values outside the gate
+	std::sort(vBaseline.begin(),vBaseline.end());
+	float baseline = 0;
+	int nBaseline = 0;
+	for(int iBln=vBaseline.size()/4; iBln<(vBaseline.size()-vBaseline.size()/4); iBln++){
+		baseline += vBaseline.at(iBln);
+		nBaseline++;
+	}
+	baseline /= (float)nBaseline;
+
+	// Finally integrate the output voltages into a charge in pC
+	float charge = 0;
+	for(int iSample = lowInt; iSample < highInt; ++iSample){
+		charge += baseline - vecSamples.at(iSample);
 	}
 	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
 

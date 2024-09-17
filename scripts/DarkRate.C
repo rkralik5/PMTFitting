@@ -183,11 +183,11 @@ void GetParams(TFile *inFile, float &ADCTomV, float &waveSize,
 
 std::vector<float> BaselineCorrection(TArrayS *&Samples, float ADCTomV){
 	// Convert waveform to vector
-		std::vector<float> vecSamples;
-		vecSamples.reserve(Samples->GetSize());
-		for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
-			vecSamples.push_back(ADCTomV*Samples->At(iSample));
-		}
+	std::vector<float> vecSamples;
+	vecSamples.reserve(Samples->GetSize());
+	for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
+		vecSamples.push_back(ADCTomV*Samples->At(iSample));
+	}
 	// Sort waveform from smallest to largest values
 	std::sort(vecSamples.begin(),vecSamples.end());
 	// Calculate the baseline as a truncated mean of 50% of values outside the gate
