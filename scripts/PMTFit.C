@@ -1,3 +1,24 @@
+///
+/// @file PMTFit
+/// @brief Fit the PMT response function to the integrated charge distribution
+/// @details This script reads in a ROOT file with a TTree of
+/// waveforms and fits the integrated charge distribution to a PMT response 
+/// function. The input is a CoMPASS-style ROOT file, which can also be
+/// generated for CAEN Scope xml outputs using the waveconvert script.
+/// The input ROOT file should have a TTree called "Data" with the waveform
+/// data saves as a TArrayS called "Samples".
+/// The PMT response function derived from a physics-motivated description and 
+/// consists a sum of Gaussians for 0, 1, 2, 3, 4 PE and an exponential 
+/// background.
+/// The fit is done using the ROOT fitting functions.
+/// The script outputs the fit parameters to a csv file.
+/// The script also outputs a plot of the charge distribution with the fit overlaid.
+/// The script can be run from the command line with the following arguments:
+/// root 'PMTFit.C("<input ROOT file>","<output csv file>")'
+/// Alternatively, the script can be run by Running
+/// bash RunPMTFit.sh <input ROOT file> <output csv file>
+///
+
 #include <vector>
 #include <iostream>
 #include <fstream>
