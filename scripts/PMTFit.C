@@ -20,7 +20,7 @@ int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
 int fPreGate = 6; ///< Number of time bins before peak position to start int
-int fGate = 100; ///< Integration range for the waveform integration in time bins
+int fGate = 50; ///< Integration range for the waveform integration in time bins
 
 // If using CoMPASS outputs need to set these values manually
 #define fResolution 500 ///< Number of ADC bins (=2^ADCResolution)
@@ -175,7 +175,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	for(int i=0; i<nfound; ++i)
 		std::cout << "Peak " << i << " is " << xpeaks[i] << std::endl;
 	double q0 = (xpeaks[0] > 0) ? xpeaks[0] : 0; // if pedestal peak not found then set it to zero
-	double q1 = (xpeaks[1] > 0) ? xpeaks[1] : 0.5*max; // if second peak not found then set it to half the charge distribution width
+	double q1 = nfound>1 ? xpeaks[1] : 0.5*max; // if second peak not found then set it to half the charge distribution width
 
 	TF1 *pmt = new TF1("pmt",PMTF,min,max,8);
 	pmt->SetNpx(1000);
