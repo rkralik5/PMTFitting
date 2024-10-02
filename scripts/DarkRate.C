@@ -42,6 +42,15 @@ void GetParams(TFile *inFile, float &ADCTomV, float &waveSize,
 /// @return vector of floats of waveform values with the baseline subtracted
 std::vector<float> BaselineCorrection(TArrayS *&Samples, float ADCTomV);
 
+/// @brief Check if the waveform has electrical noise by calculating a rolling average of dark rate over NBins and checking if it is above threshold
+/// @param waveform vector of floats of waveform values
+/// @param waveThreshold Threshold for the waveform to be considered sinusoidal
+/// @param DRThreshold Number of dark counts below the waveThreshold for the waveform to be considered noise
+/// @param NBins Width of the window to check for the noise
+/// @param iWave Waveform number for debugging
+/// @return bool true if the waveform is sinusoidal
+bool CheckNoise(std::vector<float> waveform, float waveThreshold=-2.5, int DRThreshold=5, int NBins=100, int iWave=0);
+
 /// @brief Main script that calculates the dark rate of a channel
 /// @param inFileName input ROOT file with waveforms
 /// @param outFileName output file name with histograms and dark rates for each threshold
@@ -56,7 +65,7 @@ void DarkRate(std::string inFileName,
 
 	// Get the parameters of the digitiser
 	float ADCTomV;
-	float waveSize;
+	float waveSize; ///< Size of the waveform in seconds
 	GetParams(inFile, ADCTomV, waveSize,
 					  fResolution, fVoltLow, fVoltHigh, fFrequency, fWindowSize);
 
@@ -79,7 +88,7 @@ void DarkRate(std::string inFileName,
 	float beginning = 0;
 	float end = 0;
 	tWaves->GetEntry(0);
-	beginning = Clocktime;	
+	beginning = Clocktime;
 	tWaves->GetEntry(tWaves->GetEntries()-1);
 	end = Clocktime;
 	int nBins = std::ceil((end - beginning)/fNSecPerBin); // 1 minute per bin
@@ -97,15 +106,15 @@ void DarkRate(std::string inFileName,
 	
 	// Now we loop over the events
 	int NEvents = tWaves->GetEntries();
-	//int NEvents = 1;
 	std::cout << "Entries:\t" << NEvents/1000 << "k" << std::endl;
 	for(int iWave = 0; iWave < NEvents; iWave++){
 		tWaves->GetEntry(iWave);
 		if(Channel != iChannel) continue;
+		std::vector<float> waveform = BaselineCorrection(Samples, ADCTomV);
+		if(CheckNoise(waveform, -1.4, 5, 100, iWave)) continue;
 		hWaveforms.Fill(Clocktime);
 		NWaveforms++;
-
-		std::vector<float> waveform = BaselineCorrection(Samples, ADCTomV);
+		
 		// Check if the waveform has a signal above the threshold for each threshold
 		for(int iThreshold = 0; iThreshold < NThresholds; iThreshold++){
 			bool IsAboveThreshold = false;
@@ -204,4 +213,30 @@ std::vector<float> BaselineCorrection(TArrayS *&Samples, float ADCTomV){
 		returnVec.push_back(ADCTomV*Samples->At(iSample) - baseline);
 	}
 	return returnVec;
+}
+
+bool CheckNoise(std::vector<float> waveform, float waveThreshold, int DRThreshold, int NBins, int iWave){
+	bool IsAboveThreshold = false;
+	std::vector<int> rollingAverage;
+	int firstBinVal = 0;
+
+	for(int iW=0; iW<waveform.size(); iW++){
+		if(waveform.at(iW) > waveThreshold){
+			IsAboveThreshold = true;
+		}else if(IsAboveThreshold){
+			IsAboveThreshold = false; //Only count once per peak below threshold
+			if(iW-NBins >= firstBinVal){
+				if(rollingAverage.size()>0)
+					rollingAverage.erase(rollingAverage.begin());
+				if(rollingAverage.size() == 0)
+					firstBinVal = iW;
+			}
+			rollingAverage.push_back(iW);
+		}
+		if(rollingAverage.size() > DRThreshold){
+			return true;
+		}
+	}
+
+	return false;
 }
