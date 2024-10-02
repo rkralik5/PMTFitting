@@ -13,4 +13,3 @@ if [ "${1: -4}" == "root"  ]
 	else
 		echo "Wave data does not exist, skipping directory."
 fi
-

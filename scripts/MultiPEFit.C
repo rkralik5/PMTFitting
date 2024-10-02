@@ -25,7 +25,7 @@ int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
 int fPreGate = 6; ///< Number of time bins before peak position to start int
-int fGate = 50; ///< Integration range for the waveform integration in time bins
+int fGate = 150; ///< Integration range for the waveform integration in time bins
 // TODO: #12 Change the gain to be loaded from somewhere or somethin else smart
 float gain = 4973130; ///< Gain for this specific PMT
 
@@ -86,7 +86,6 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
-		//vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
 		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
 																				fPreGate,	fGate));
 	}
@@ -116,21 +115,20 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	double sigma = pmt->GetParameter(2);
 
 	// Now fit again with a Gaussian but only the peak to get the correct mean
-	hCharge->Fit("gaus","EM","",mean-sigma,mean+sigma);
+	hCharge->Fit("gaus","EM","",mean-1.3*sigma,mean+sigma);
 	hCharge->Draw("hist");
+	//pmt->SetRange(minimum,maximum);
 	pmt->Draw("same");
 
 	// Number of Photo Electrons is simply mean/charge of 1 PE
 	double NPE = pmt->GetParameter(1)*1e-12/(gain*e);
 	std::cout << "NPE: " << NPE << std::endl;
+	double NPE_calc = pow(pmt->GetParameter(1)/pmt->GetParameter(2),2);
 
 	// Print the voltage
 	std::string VLabel = inFileName.substr(0,inFileName.find_last_of("."));
 	VLabel = VLabel.substr(0,VLabel.find_last_of("_"));
 	VLabel = VLabel.substr(VLabel.find_last_of("_")+1);
-	TText text(.7,.5,("Input: "+VLabel).c_str());
-	text.SetNDC();
-	text.Draw("same");
 
 	c.Update();
 
@@ -140,9 +138,6 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+"_Fit";
 	c.SaveAs((plotFileName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 
-	//c.SetLogy();
-	//c.SaveAs((plotFileName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
-
 	// Lets output this to some file
 	std::ofstream outfile;
   outfile.open(outFileName.c_str(),
@@ -151,11 +146,8 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 					<< pmt->GetChisquare()/pmt->GetNDF() << ","
 					<< pmt->GetParameter(1) << ","
 					<< pmt->GetParameter(2) << ","
-					<< NPE << ",";
+					<< NPE << "," << NPE_calc << "\n";
 	outfile.close();
-	
-	delete hCharge;
-	delete pmt;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
