@@ -28,6 +28,10 @@ void PlotPoints(std::string line, TArrayS *&Samples){
 
 void Convert(std::string inName, std::string outName){
 	std::cout << "Converting " << inName << " to " << outName << std::endl;
+	if(inName.find(".xml") == std::string::npos){
+		std::cerr << "Input file is not an xml file" << std::endl;
+		return;
+	}
 	// Populate tree structure pt
   using boost::property_tree::ptree;
   ptree pt;
@@ -105,9 +109,6 @@ void Convert(std::string inName, std::string outName){
 		}
   }
 	
-	delete Samples;
-	delete tWaves;
-	delete tDevice;
 	fOut->Write();
 	fOut->Close();
  }
