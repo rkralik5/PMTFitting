@@ -76,7 +76,7 @@ void Convert(std::string inName, std::string outName){
 	UShort_t Channel = -1; ///< Channel number
 	long long int Timestamp = -1; ///< Timestamp of the event from start of run
 	long long int Clocktime = -1; ///< Clocktime of the event (in Unix time)
-	TArrayS* Samples; ///< Array of samples (waveform values)
+	TArrayS* Samples = nullptr; ///< Array of samples (waveform values)
 	TTree *tWaves = new TTree("Data","Wave Data");
 	tWaves->Branch("Channel",  &Channel,  "Channel/S");
 	tWaves->Branch("Timestamp",&Timestamp,"Timestamp/I");
@@ -89,7 +89,7 @@ void Convert(std::string inName, std::string outName){
 			int id = v.second.get<int>("<xmlattr>.id", -1);
 			if(id%10000 == 0)
 				std::cout << "Event:\t" << id/1000 << "k\r" << std::flush;
-
+				
 			Timestamp = v.second.get<int>("<xmlattr>.timestamp", -1);
 			Clocktime = v.second.get<int>("<xmlattr>.clocktime", -1);
 			// Loop over the channels containing a waveform
@@ -104,7 +104,10 @@ void Convert(std::string inName, std::string outName){
 			}
 		}
   }
-
+	
+	delete Samples;
+	delete tWaves;
+	delete tDevice;
 	fOut->Write();
 	fOut->Close();
  }
