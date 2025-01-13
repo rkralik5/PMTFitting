@@ -15,7 +15,8 @@
 #include <TArrayS.h>
 
 #define NThresholds 20 ///< Number of thresholds to check
-#define fNSecPerBin 60 ///< Number of seconds per bin
+#define fNSecPerBin 3600//60 ///< Number of seconds per bin
+#define fCutOff 0//1736553000 ///< Beginning cut off time to remove light exposure
 
 // If using CoMPASS outputs need to set these values manually
 #define fResolution 500 ///< Number of ADC bins (=2^ADCResolution)
@@ -89,6 +90,8 @@ void DarkRate(std::string inFileName,
 	float end = 0;
 	tWaves->GetEntry(0);
 	beginning = Clocktime;
+	// Check if the cut off time should be applied for this sample
+	if(beginning < fCutOff) beginning = fCutOff;
 	tWaves->GetEntry(tWaves->GetEntries()-1);
 	end = Clocktime;
 	int nBins = std::ceil((end - beginning)/fNSecPerBin); // 1 minute per bin
@@ -110,6 +113,7 @@ void DarkRate(std::string inFileName,
 	for(int iWave = 0; iWave < NEvents; iWave++){
 		tWaves->GetEntry(iWave);
 		if(Channel != iChannel) continue;
+		if(Clocktime < beginning) continue;
 		std::vector<float> waveform = BaselineCorrection(Samples, ADCTomV);
 		if(CheckNoise(waveform, -1.4, 5, 100, iWave)) continue;
 		hWaveforms.Fill(Clocktime);
