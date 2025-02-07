@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <numeric> // for std::accumulate
 
 #include "TFile.h"
 #include "TTree.h"
@@ -96,6 +97,9 @@ Double_t PMTF1(Double_t *x_, Double_t *par);
 
 /// @brief 2 PE component of the full PMT response function
 Double_t PMTF2(Double_t *x_, Double_t *par);
+
+/// @brief Non-pedestal components of the full PMT response function
+Double_t PMTFNonPed(Double_t *x_, Double_t *par);
 
 /// @brief Take parameters from PMT response function a and fix them onto p
 /// @param p Function to fix the paramters onto
@@ -203,6 +207,9 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	double totalCharge = hCharge->Integral();
 	hCharge->Scale(1/totalCharge);
 
+	float vecAverage = accumulate(vecCharge.begin(),vecCharge.end(),0.0)/vecCharge.size();
+	std::cout << "Vector average is " << vecAverage << std::endl;
+
 	// Estimate the pedestal mean and sigma from the out-of-time and below
 	// threshold charges
 	float pedEstimateIntegral = 0;
@@ -302,14 +309,17 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,8);
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
+	TF1 *pmtNonPed = new TF1("pmtNonPed",PMTFNonPed,min,max,8);
 	FixFit(pmt0, pmt);
 	FixFit(pmt1, pmt);
 	FixFit(pmt2, pmt);
+	FixFit(pmtNonPed, pmt);
 
 	pmt0->Draw("same");
 	pmt1->Draw("same");
 	if(2*SPECharge < max) // Only draw if second PE peak below maximum
 		pmt2->Draw("same");
+	pmtNonPed->Draw("same");
 
 	pmt->SetLineColor(kRed+1);
 	pmt0->SetLineColor(kGray+1);
@@ -318,6 +328,8 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	pmt1->SetLineStyle(2);
 	pmt2->SetLineColor(kMagenta+1);
 	pmt2->SetLineStyle(2);
+	pmtNonPed->SetLineColor(kGreen+1);
+	pmtNonPed->SetLineStyle(2);
 
 	TLegend leg(0.62,0.3,0.88,0.55);
 	leg.AddEntry(hCharge,"Data","lep");
@@ -325,6 +337,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	leg.AddEntry(pmt0,"Pedestal","l");
 	leg.AddEntry(pmt1,"Single PE","l");
 	if(2*SPECharge<max) leg.AddEntry(pmt2,"Two PE","l");
+	leg.AddEntry(pmtNonPed,"Non-pedestal","l");
 	leg.Draw("same");
 
 	// Print the voltage
@@ -342,6 +355,24 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	//c.SaveAs((plotFileName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 	c.SetLogy();
 	c.SaveAs((plotFileName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
+
+	// Calculate the NPE as ln(Integral(tot)/Integral(ped))
+	float totInt = pmt->Integral(min,max);
+	float pedInt = pmt0->Integral(min,max);
+	std::cout << "Calculated NPE from Pedestal is " << log(totInt/pedInt) << std::endl;
+
+	std::cout << "Mean ped is " << pmt0->Mean(min, max) << " and mean sig is "
+						<< pmtNonPed->Mean(min, max) << " or with larger range "
+						<< pmtNonPed->Mean(-1, 50) << "\n" << std::endl;
+	
+	std::cout << "Gain from SPE peak is " << gain << std::endl;
+	std::cout << "Gain from pedestal is "
+						<< vecAverage*1e-12/(e*log(totInt/pedInt))
+						<< std::endl;			
+	std::cout << "Gain using NPE from fit is "
+						<< vecAverage*1e-12/(e*pmt->GetParameter(6))
+						<< std::endl;
+	std::cout << "\n\n";
 
 	double peak = pmt->Eval(pmt->GetParameter(2));
 	double valley = pmt->GetMinimum(pmt->GetParameter(0), pmt->GetParameter(2));
@@ -634,6 +665,24 @@ Double_t PMTF2(Double_t *x_, Double_t *par){
 	double scale = par[7];
 
 	return scale*Pois(mu,2)*((1-w)*Gaus(x,q0,q1,s1,2) + w*Ignxe(x,q0,s0,q1,s1,a,2));
+}
+
+Double_t PMTFNonPed(Double_t *x_, Double_t *par){
+	double x = x_[0];
+	double q0 = par[0];
+	double s0 = par[1];
+	double q1 = par[2];
+	double s1 = par[3];
+	double w = par[4];
+	double a = par[5];
+	double mu = par[6];
+	double scale = par[7];
+
+	return scale*Pois(mu, 1)*((1-w)*Gaus(x,q0,q1,s1,1) + w*Ignxe(x,q0,s0,q1,s1,a,
+				 1)) + 
+				 scale*Pois(mu, 2)*((1-w)*Gaus(x,q0,q1,s1,2) + w*Ignxe(x,q0,s0,q1,s1,a,2)) +
+		     scale*Pois(mu, 3)*((1-w)*Gaus(x,q0,q1,s1,3) + w*Ignxe(x,q0,s0,q1,s1,a,3)) + 
+		     scale*Pois(mu, 4)*((1-w)*Gaus(x,q0,q1,s1,4) + w*Ignxe(x,q0,s0,q1,s1,a,4));
 }
 
 void FixFit(TF1 *&p, TF1 *&a){
