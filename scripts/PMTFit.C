@@ -122,6 +122,9 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 /// @return Inegrated charge in pC
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 										  int preGate=5, int gate=50);
+float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
+										  int preGate, int gate, float& minTime,
+											float& minVolt);
 
 std::pair<float,float> FindChargeMinmax(std::vector<float> &vecCharge,
 																			  int minBinContent=3);
@@ -150,10 +153,8 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	//tWaves->SetBranchAddress("wavex", &wavex);
 	//tWaves->SetBranchAddress("wavey", &wavey);
 
-	//Short_t Channel = -1; ///< Channel number
 	int Clocktime = -1; ///< Clocktime of the event (in Unix time)
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
-	//tWaves->SetBranchAddress("Channel", &Channel);
 	tWaves->SetBranchAddress("Clocktime", &Clocktime);
 	tWaves->SetBranchAddress("Samples", &Samples);
 
@@ -165,9 +166,11 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
+		float mintime = 0; // get time of peak voltage in ns
+		float minvolt = 0; // get peak voltage in mV
 		//vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
 		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
-																				fPreGate,	fGate));
+																	 			fPreGate,	fGate, mintime, minvolt));
 	}
 
 	// Find the minimum and maximum to fill a histogram
@@ -204,7 +207,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
 
-	// TODO: #5 Get then number of PE from fraction of pedestal
+	// TODO: #5 Get the number of PE from fraction of pedestal
   pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu",
 									 "Scaling factor");
 	pmt->SetParameter(0,q0); // Mean of the pedestal
@@ -354,7 +357,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 					<< peRes << ","
 					<< pmt->GetParameter(6) << "\n";
 	outfile.close();
-	
+
 	delete hCharge;
 	delete s;
 	delete pmt;
@@ -370,10 +373,10 @@ void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 	TTree *tDevice = (TTree*)inFile->Get("Device");
 	// Check if the TTree was loaded correctly
 	if(tDevice == nullptr){
+		std::cerr << "Could not load the Device TTree" << std::endl;
+		std::cerr << "Using the manually inputed values!" << std::endl;
 		if(resolution == -1 || voltLow == -1 || voltHigh == -1 ||
 			 frequency == -1){
-			std::cerr << "Could not load the Device TTree" << std::endl;
-			std::cerr << "You have to input the values manually" << std::endl;
 			return;
 		}else{
 			ADCTomV = (float)(voltHigh - voltLow)*1000/(float)resolution;
@@ -439,7 +442,7 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 }
 
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
-										  int preGate, int gate){
+										  int preGate, int gate, float& minTime, float& minVolt){
 	// Convert waveform to vector for easier manipulation
 	std::vector<float> vecSamples;
 	vecSamples.reserve(Samples->GetSize());
@@ -453,7 +456,10 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 	int minPos = std::distance(vecSamples.begin(),
 														 std::min_element(vecSamples.begin()+5,
 														 									vecSamples.end()-5));
-	float minCharge = vecSamples.at(minPos);
+	
+	// Minimum time is just the minPos multiplied by the time resolution
+	minTime = minPos*timeBinWidth;
+	minVolt = vecSamples.at(minPos);
 
 	// Get the integration range
 	int lowInt = minPos>preGate ? minPos - preGate : 0;
@@ -480,6 +486,9 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 		nBaseline++;
 	}
 	baseline /= (float)nBaseline;
+
+	// Correct the minVolt by subtracting the baseline
+	minVolt = baseline-minVolt;
 
 	// Finally integrate the output voltages into a charge in pC
 	float charge = 0;
