@@ -126,21 +126,35 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 										  int preGate, int gate, float& minTime,
 											float& minVolt);
 
+/// @brief Find the minimum and maximum of the charge distribution
+/// @param vecCharge Vector of all integrated charges
+/// @param minBinContent Minimum number of entries in a bin to be considered
+/// @return Pair of minimum and maximum charge values (floats)
 std::pair<float,float> FindChargeMinmax(std::vector<float> &vecCharge,
 																			  int minBinContent=3);
+
+/// @brief Estimate pedestal Gaussian from out-of-time and below thresh charges
+/// @param vecPed Vector of pedestal charges
+/// @param pedIntegral Integral of the pedestal histogram
+/// @return Gaussian fit of the pedestal
+TF1 EstimatePedestal(std::vector<float> &vecPed, float& pedIntegral);
 
 /// @brief Get PMT label from the inFileName
 /// @param inFileName Name of the input file with path and extension
 /// @return PMT label
 std::string GetPMTLabel(std::string inFileName);
 
-
-
+////////////////////////////////////////////////////////////////////////////////
+/// START OF MAIN FUNCTION
+///
 /// @brief Main fit function that loads waves, defines fitting functions, does the fits, plots the result and saves it to a csv file
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
 void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TFile* inFile = new TFile(inFileName.c_str(),"READ");
+	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+
+													   "_Fit";
+
 	// Get the parameters of the digitiser
 	float ADCTomV;
 	float timeBinWidth;
@@ -159,10 +173,12 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
-	//TODO: #1 Get an estimate on the pedestal mean and sigma from out-of-time and below threshold charges
+	//TODO: #13 Get an estimate on the pedestal mean and sigma from out-of-time and below threshold charges
 	int NEntries = tWaves->GetEntries();
-	std::vector<float> vecCharge;
+	std::vector<float> vecCharge; //< Vector of all integrated charges
 	vecCharge.reserve(NEntries);
+	std::vector<float> vecPedestal; //< Vector of integrated pedestal charges
+	vecPedestal.reserve(NEntries);
 	for (int i = 0; i < NEntries; i++){ // fill histogram
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
@@ -170,24 +186,38 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		float mintime = 0; // get time of peak voltage in ns
 		float minvolt = 0; // get peak voltage in mV
 		//vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
-		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
-																	 			fPreGate,	fGate, mintime, minvolt));
+		float charge = IntegrateCharge(Samples, ADCTomV, timeBinWidth,
+																	 fPreGate,	fGate, mintime, minvolt);
+		vecCharge.push_back(charge);
+		if(minvolt < 0.5 || mintime < 370 || mintime > 410)
+			vecPedestal.push_back(charge);
 	}
 
-	// Find the minimum and maximum to fill a histogram
+	// Find the minimum and maximum to fill a charge histogram
 	auto chargeMinmax = FindChargeMinmax(vecCharge, 5);
 	float min = chargeMinmax.first; float max = chargeMinmax.second;
-
 	TH1F *hCharge = new TH1F("charge",
 													 ";Integrated Charge [pC];Area Normalized (arb. units)", fNChargeBins, min, max);
 	hCharge->GetXaxis()->CenterTitle();
 	hCharge->GetYaxis()->CenterTitle();
 	for(auto iCharge : vecCharge) hCharge->Fill(iCharge);
-	hCharge->Scale(1/hCharge->Integral());
+	double totalCharge = hCharge->Integral();
+	hCharge->Scale(1/totalCharge);
+
+	// Estimate the pedestal mean and sigma from the out-of-time and below
+	// threshold charges
+	float pedEstimateIntegral = 0;
+	TF1 pedEstimate = EstimatePedestal(vecPedestal, pedEstimateIntegral);
+	// Estimate number of photo electrons from ln(Integral(tot)/Integral(ped))
+	double 	NPEEstimate = log(totalCharge/pedEstimateIntegral);
+	std::cout << "Initial estimate of the pedestal mean charge is "
+		  			<< pedEstimate.GetParameter(1) << " and sigma is "
+						<< pedEstimate.GetParameter(2)
+						<< " and NPE from ln(Integral(tot)/Integral(ped)) is "
+						<< NPEEstimate << std::endl;
 
 	TCanvas c("c","c");
 	c.cd();
-
 	hCharge->Draw("axis");
 
 	//TODO: #6 Add option to do multi-PE fit as well
@@ -211,22 +241,24 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	// TODO: #5 Get the number of PE from fraction of pedestal
   pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu",
 									 "Scaling factor");
-	pmt->SetParameter(0,q0); // Mean of the pedestal
-	pmt->SetParameter(1,0.1*(q1-q0)); // Sigma of the pedestal
+	pmt->SetParameter(0,pedEstimate.GetParameter(1)); // Mean of the pedestal
+	pmt->SetParameter(1,pedEstimate.GetParameter(2)); // Sigma of the pedestal
 	pmt->SetParameter(2,q1); // Mean of the SPE peak
 	pmt->SetParameter(3,0.3*q1); // Expected SPE resolution is 30%
 	pmt->SetParameter(4,0.01); // Exponentional background contribution
 	pmt->SetParameter(5,1); // Background decay constant
-	pmt->SetParameter(6,0.2); // "True" number of PE (should be < 1 for SPE)
+	pmt->SetParameter(6,NPEEstimate); // "True" number of PE
 	pmt->SetParameter(7,1); // Scaling factor
 
-	pmt->SetParLimits(0,min,0.8*q1);
-	pmt->SetParLimits(1,0,0.5*(q1-q0));
-	pmt->SetParLimits(2,q0,max);
+	pmt->SetParLimits(0,pedEstimate.GetParameter(1)-5*pedEstimate.GetParError(1),
+											pedEstimate.GetParameter(1)+5*pedEstimate.GetParError(1));
+	pmt->SetParLimits(1,pedEstimate.GetParameter(2)-5*pedEstimate.GetParError(2),
+											pedEstimate.GetParameter(2)+5*pedEstimate.GetParError(2));
+	pmt->SetParLimits(2,pedEstimate.GetParameter(1),max);
 	pmt->SetParLimits(3,0.05*q1,q1);
 	pmt->SetParLimits(4,1e-5,1);
 	pmt->SetParLimits(5,0,10);
-	pmt->SetParLimits(6,0.01,1.);
+	pmt->SetParLimits(6,0.01,1.); // "True" number of PE should be < 1 for SPE
 	pmt->SetParLimits(7,0.,100);
 	
 	gStyle->SetOptStat(0);
@@ -310,9 +342,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	std::string PMTLabel = GetPMTLabel(inFileName);
 	CornerLabel(PMTLabel);
 
-	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+"_Fit";
 	//c.SaveAs((plotFileName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
-
 	c.SetLogy();
 	c.SaveAs((plotFileName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 
@@ -368,7 +398,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-///  START OF FUNCTION DEFINITIONS
+///  START OF HELPER FUNCTION DEFINITIONS
 void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 							 int resolution = -1, float voltLow = -1, float voltHigh = -1, float frequency = -1){
 	TTree *tDevice = (TTree*)inFile->Get("Device");
@@ -521,6 +551,22 @@ std::pair<float,float> FindChargeMinmax(std::vector<float> &vecCharge,
 		else break;
 	}
 	return std::make_pair(minimum,maximum);
+}
+
+TF1 EstimatePedestal(std::vector<float> &vecPed, float& pedIntegral){
+	// Do the same for the pedestal histogram
+	auto pedChargeMinmax = FindChargeMinmax(vecPed, 5);
+	TH1F hPedestalPreliminary("pedestalPreliminary",
+														"Pedestal only;Integrated Charge [pC]; Area Normalized (arb. units)",
+														fNChargeBins/3, pedChargeMinmax.first,
+														pedChargeMinmax.second);
+	for(auto iCharge : vecPed) hPedestalPreliminary.Fill(iCharge);
+	pedIntegral = hPedestalPreliminary.Integral();
+
+	// Fit Gaussian to the pedestal histogram
+	TF1 pedestal("pedestal","gaus",pedChargeMinmax.first,pedChargeMinmax.second);
+	hPedestalPreliminary.Fit("pedestal","EMR");
+	return pedestal;
 }
 
 Double_t Ignxe( double x, double q0, double s0, double q1, double s1, double a, double n ){
