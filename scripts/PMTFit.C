@@ -173,7 +173,6 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
-	//TODO: #13 Get an estimate on the pedestal mean and sigma from out-of-time and below threshold charges
 	int NEntries = tWaves->GetEntries();
 	std::vector<float> vecCharge; //< Vector of all integrated charges
 	vecCharge.reserve(NEntries);
@@ -238,7 +237,6 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
 
-	// TODO: #5 Get the number of PE from fraction of pedestal
   pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu",
 									 "Scaling factor");
 	pmt->SetParameter(0,pedEstimate.GetParameter(1)); // Mean of the pedestal
