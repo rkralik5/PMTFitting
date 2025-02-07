@@ -159,7 +159,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
-	TODO: #1 Get an estimate on the pedestal mean and sigma from out-of-time and below threshold charges
+	//TODO: #1 Get an estimate on the pedestal mean and sigma from out-of-time and below threshold charges
 	int NEntries = tWaves->GetEntries();
 	std::vector<float> vecCharge;
 	vecCharge.reserve(NEntries);
