@@ -217,6 +217,8 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	TCanvas c("c","c");
 	c.cd();
+	gStyle->SetOptStat(0);
+	gStyle->SetOptFit(1);
 	hCharge->Draw("axis");
 
 	//TODO: #6 Add option to do multi-PE fit as well
@@ -233,10 +235,6 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	TF1 *pmt = new TF1("pmt",PMTF,min,max,8);
 	pmt->SetNpx(1000);
-	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,8);
-	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
-	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
-
   pmt->SetParNames("Q_{0}","#sigma_{0}","Q_{1}","#sigma_{1}", "w", "a", "#mu",
 									 "Scaling factor");
 	pmt->SetParameter(0,pedEstimate.GetParameter(1)); // Mean of the pedestal
@@ -258,16 +256,13 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	pmt->SetParLimits(5,0,10);
 	pmt->SetParLimits(6,0.01,1.); // "True" number of PE should be < 1 for SPE
 	pmt->SetParLimits(7,0.,100);
-	
-	gStyle->SetOptStat(0);
-	gStyle->SetOptFit(1);
 
 	hCharge->Fit("pmt","EMR"); //EM
-	std::cout << "Chi^2/NDF = " << pmt->GetChisquare()/pmt->GetNDF() << std::endl;
 
 	// If the fit did badly then try to fix the exponential background
 	if(pmt->GetChisquare()/pmt->GetNDF() > 5){
-		std::cout << "Fit failed - trying to fix the exponential background" << std::endl;
+		std::cout << "Fit failed (Chi^2/NDF = "	<< pmt->GetChisquare()/pmt->GetNDF()
+							<< ") trying to fix the exponential background" << std::endl;
 		if(pmt->GetParameter(2) < pmt->GetParameter(0) || pmt->GetParameter(0) > 10*q0){
 			std::cout << "Single PE mean < Pedestal mean - re-do the entire fit one at a time" << std::endl;
 			pmt->SetParameter(0,q0); // Mean of the pedestal
@@ -276,7 +271,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 			pmt->SetParameter(3,0.3*q1); // Expected SPE resolution is 30%
 			pmt->FixParameter(4,0); // NO Exponentional background contribution
 			pmt->SetParameter(6,0.1); // "True" number of PE (should be < 1 for SPE)
-			pmt->SetParameter(7,0.1); // Scaling factor - should not be needed but is...
+			pmt->SetParameter(7,0.1);
 			hCharge->Fit("pmt","EMR"); //EM
 			std::cout << "Chi^2/NDF = " << pmt->GetChisquare()/pmt->GetNDF() << std::endl;
 		}
@@ -296,13 +291,17 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		hCharge->Fit("pmt","EMR");
 	}
 
+	// TODO: #15 Add a gain calculation from mean of non-pedestal charge distribution
 	double chisqr = pmt->GetChisquare()/pmt->GetNDF();
 	std::cout << "Chi^2/NDF = " << chisqr << std::endl;
-
 	double SPECharge = pmt->GetParameter(2);
 	double gain = (SPECharge-pmt->GetParameter(0))*1e-12/e;
 	double peRes = pmt->GetParameter(3)/pmt->GetParameter(2); // s1/q1
 
+	// Copy the results of the fit to the individual components
+	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,8);
+	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
+	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
 	FixFit(pmt0, pmt);
 	FixFit(pmt1, pmt);
 	FixFit(pmt2, pmt);
