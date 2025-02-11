@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <numeric> // for std::accumulate
 
 #include "TFile.h"
 #include "TTree.h"
@@ -49,6 +50,10 @@ int fGate = 50; ///< Integration range for the waveform integration in time bins
 #define fVoltHigh 2.f ///< Voltage range high
 #define fFrequency 500e6 ///< Frequency of the digitiser in Hz
 #define fWindowSize 600 ///< Size of the waveform (number of time bins)
+
+// Values to estimate the initial shape of the pedestal
+float fThreshold = 0.5; ///< Threshold for pedestal in mV (not used in fit)
+int fPeakTime = 390; ///< Approx. time of the peak in ns (not used in fit)
 
 Double_t factorial(int a){
 	if(a > 1){return a*factorial(a-1);} else return 1;
@@ -144,6 +149,9 @@ TF1 EstimatePedestal(std::vector<float> &vecPed, float& pedIntegral);
 /// @return PMT label
 std::string GetPMTLabel(std::string inFileName);
 
+/// @brief Trivial funciton to check if a csv file is empty (and needs a header)
+bool CheckEmptyFile(std::string outFileName);
+
 ////////////////////////////////////////////////////////////////////////////////
 /// START OF MAIN FUNCTION
 ///
@@ -188,7 +196,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		float charge = IntegrateCharge(Samples, ADCTomV, timeBinWidth,
 																	 fPreGate,	fGate, mintime, minvolt);
 		vecCharge.push_back(charge);
-		if(minvolt < 0.5 || mintime < 370 || mintime > 410)
+		if(minvolt < fThreshold || mintime < fPeakTime-20 || mintime > fPeakTime+20)
 			vecPedestal.push_back(charge);
 	}
 
@@ -202,6 +210,9 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	for(auto iCharge : vecCharge) hCharge->Fill(iCharge);
 	double totalCharge = hCharge->Integral();
 	hCharge->Scale(1/totalCharge);
+
+	float vecAverage = accumulate(vecCharge.begin(),vecCharge.end(),0.0)/vecCharge.size();
+	std::cout << "Vector average is " << vecAverage << std::endl;
 
 	// Estimate the pedestal mean and sigma from the out-of-time and below
 	// threshold charges
@@ -291,25 +302,14 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		hCharge->Fit("pmt","EMR");
 	}
 
-	// TODO: #15 Add a gain calculation from mean of non-pedestal charge distribution
-	double chisqr = pmt->GetChisquare()/pmt->GetNDF();
-	std::cout << "Chi^2/NDF = " << chisqr << std::endl;
-	double SPECharge = pmt->GetParameter(2);
-	double gain = (SPECharge-pmt->GetParameter(0))*1e-12/e;
-	double peRes = pmt->GetParameter(3)/pmt->GetParameter(2); // s1/q1
 
-	// Copy the results of the fit to the individual components
+	// Copy and draw the results of the fit to the individual components
 	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,8);
 	TF1 *pmt1 = new TF1("pmt1",PMTF1,min,max,8);
 	TF1 *pmt2 = new TF1("pmt2",PMTF2,min,max,8);
 	FixFit(pmt0, pmt);
 	FixFit(pmt1, pmt);
 	FixFit(pmt2, pmt);
-
-	pmt0->Draw("same");
-	pmt1->Draw("same");
-	if(2*SPECharge < max) // Only draw if second PE peak below maximum
-		pmt2->Draw("same");
 
 	pmt->SetLineColor(kRed+1);
 	pmt0->SetLineColor(kGray+1);
@@ -319,12 +319,17 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	pmt2->SetLineColor(kMagenta+1);
 	pmt2->SetLineStyle(2);
 
+	pmt0->Draw("same");
+	pmt1->Draw("same");
+	if(2*pmt->GetParameter(2) < max) // Only draw if second PE peak below maximum
+		pmt2->Draw("same");
+
 	TLegend leg(0.62,0.3,0.88,0.55);
 	leg.AddEntry(hCharge,"Data","lep");
 	leg.AddEntry(pmt,"Full PMT response","l");
 	leg.AddEntry(pmt0,"Pedestal","l");
 	leg.AddEntry(pmt1,"Single PE","l");
-	if(2*SPECharge<max) leg.AddEntry(pmt2,"Two PE","l");
+	if(2*pmt->GetParameter(2)<max) leg.AddEntry(pmt2,"Two PE","l");
 	leg.Draw("same");
 
 	// Print the voltage
@@ -333,9 +338,9 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TText text(.4,.8,("Input: "+VLabel).c_str());
 	text.SetNDC();
 	text.Draw("same");
-
 	c.Update();
 
+	// Add the PMT label to the plot
 	std::string PMTLabel = GetPMTLabel(inFileName);
 	CornerLabel(PMTLabel);
 
@@ -343,47 +348,67 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	c.SetLogy();
 	c.SaveAs((plotFileName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 
+	// Calculate the parameters of the fit
+	double chisqr = pmt->GetChisquare()/pmt->GetNDF();
+	std::cout << "Chi^2/NDF = " << chisqr << std::endl;
+	double SPECharge = pmt->GetParameter(2);
+	double SPESigma = pmt->GetParameter(3);
+	double SPERes = pmt->GetParameter(3)/pmt->GetParameter(2); ///< SPE resolution
+
+	// Calculate the NPE
+	double NPE_fit = pmt->GetParameter(6);
+	float totInt = pmt->Integral(min,max);
+	float pedInt = pmt0->Integral(min,max);
+	double NPE_ped = log(totInt/pedInt); ///< NPE from pedestal
+	std::cout << "Calculated NPE from Pedestal is " << NPE_ped << std::endl;
+
+	// Calculate the gain with different methods
+	/// Gain calculate as SPE-Ped peak
+	double gain_fit = (SPECharge - pmt->GetParameter(0))*1e-12/e;
+	double gain_spe = SPECharge*1e-12/e; ///< Gain calculated from SPE peak
+	double gain_npe = vecAverage*1e-12/(e*NPE_fit); ///< Gain from mean/NPE_fit
+	double gain_ped = vecAverage*1e-12/(e*NPE_ped); ///< Gain from mean/NPE_ped
+
+	// Calculate the peak to valley ratio - first from fit then from histogram
 	double peak = pmt->Eval(pmt->GetParameter(2));
 	double valley = pmt->GetMinimum(pmt->GetParameter(0), pmt->GetParameter(2));
-	double valleyPos = pmt->GetMinimumX(pmt->GetParameter(0), pmt->GetParameter(2));
-	double peak2valley = peak/valley;
 	double peakHist = hCharge->GetBinContent(hCharge->FindBin(q1));
 	double valleyHist = 2*hCharge->GetBinContent(hCharge->FindBin(q0));
 	int valleyBin = 1;
+	// Find valley as the minimum in the range between pedestal and SPE peaks
 	for(int iBin=hCharge->FindBin(q0); iBin<hCharge->FindBin(q1); ++iBin){
 		if(hCharge->GetBinContent(iBin)<valleyHist){
 			valleyHist = hCharge->GetBinContent(iBin);
 			valleyBin = iBin;
 		}
 	}
+	// Find peak as the maximum in the range between valley and SPE+10 bins after
 	for(int iBin=valleyBin; iBin<hCharge->FindBin(q1)+10; ++iBin){
 		if(hCharge->GetBinContent(iBin)>peakHist)
 			peakHist = hCharge->GetBinContent(iBin);
 	}
 
 	std::cout << "Q1 = " << SPECharge << "pC" << std::endl;
-	std::cout << "Which is equal to a gain of " << gain << std::endl;
-	std::cout << "Pedastal " << hCharge->Integral(0,hCharge->FindFixBin(valleyPos)) << std::endl;
-	std::cout << "Signal " << hCharge->Integral(hCharge->FindFixBin(valleyPos)+1,fNChargeBins) << std::endl;
-	std::cout << "PE Res " << peRes << std::endl;
-	std::cout << "Peak " << peak << " and valley " << valley << std::endl;
-	std::cout << "P2V " << peak2valley << std::endl;
-	std::cout << "PeakHist " << peakHist << " and valleyHist " << valleyHist
-						<< " P2VHist " << peakHist/valleyHist << std::endl;
+	std::cout << "Gain from fit: " << gain_fit << std::endl;
+	std::cout << "Gain from SPE: " << gain_spe << std::endl;
+	std::cout << "Gain from NPE: " << gain_npe << std::endl;
+	std::cout << "Gain from Pedestal: " << gain_ped << std::endl;
+	std::cout << "PE Res: " << SPERes*100 << std::endl;
+	std::cout << "Peak-to-Valley: " << peakHist/valleyHist << std::endl;
 
 	// Lets output this to some file
 	std::ofstream outfile;
-  outfile.open(outFileName.c_str(),
+	outfile.open(outFileName.c_str(),
 							 std::ios_base::app); // append instead of overwrite
-	outfile << fGate << "," << inFileName << ","
-					<< pmt->GetChisquare()/pmt->GetNDF() << ","
-					<< pmt->GetParameter(2) << ","
-					<< pmt->GetParameter(3) << ","
-					<< gain << ","
-					<< peak2valley << ","
-					<< peakHist/valleyHist << ","
-					<< peRes << ","
-					<< pmt->GetParameter(6) << "\n";
+
+	// Check if the file is empty and add the header if not
+	if(CheckEmptyFile(outFileName)){
+		outfile << "intrange,fname,chisqr,Q1,sigma,pe_res,gain_fit,gain_spe,gain_npe,gain_ped,pv_r_hist,n_pe\n";
+	}
+	outfile << fGate << "," << inFileName << "," << chisqr << ","
+					<< SPECharge << ","	<< SPESigma << "," << SPERes << ","
+					<< gain_fit << "," << gain_spe << "," << gain_npe << ","
+					<< gain_ped << "," << peakHist/valleyHist << ","	<< NPE_fit << "\n";
 	outfile.close();
 
 	delete hCharge;
@@ -412,7 +437,6 @@ void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 			return;
 		}
 	}
-
 	tDevice->SetBranchAddress("resolution", &resolution);
 	tDevice->SetBranchAddress("voltLow", &voltLow);
 	tDevice->SetBranchAddress("voltHigh", &voltHigh);
@@ -465,7 +489,6 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 		charge += baseline - wy->at(iSample);
 	}
 	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
-
 	return charge;
 }
 
@@ -524,7 +547,6 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 		charge += baseline - vecSamples.at(iSample);
 	}
 	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
-
 	return charge;
 }
 
@@ -552,7 +574,7 @@ std::pair<float,float> FindChargeMinmax(std::vector<float> &vecCharge,
 
 TF1 EstimatePedestal(std::vector<float> &vecPed, float& pedIntegral){
 	// Do the same for the pedestal histogram
-	auto pedChargeMinmax = FindChargeMinmax(vecPed, 5);
+	auto pedChargeMinmax = FindChargeMinmax(vecPed, 10);
 	TH1F hPedestalPreliminary("pedestalPreliminary",
 														"Pedestal only;Integrated Charge [pC]; Area Normalized (arb. units)",
 														fNChargeBins/3, pedChargeMinmax.first,
@@ -563,6 +585,8 @@ TF1 EstimatePedestal(std::vector<float> &vecPed, float& pedIntegral){
 	// Fit Gaussian to the pedestal histogram
 	TF1 pedestal("pedestal","gaus",pedChargeMinmax.first,pedChargeMinmax.second);
 	hPedestalPreliminary.Fit("pedestal","EMR");
+	std::cout << "Chi^2/NDF for pedestal fit is "
+						<< pedestal.GetChisquare()/pedestal.GetNDF() << std::endl;
 	return pedestal;
 }
 
@@ -678,4 +702,9 @@ std::string GetPMTLabel(std::string inFileName){
 	getline(RestOfLine, PMTLabel, '_');
 
 	return PMTBrand+" "+PMTLabel;
+}
+
+bool CheckEmptyFile(std::string outFileName){
+	std::ifstream checkfile(outFileName.c_str());
+  return checkfile.peek() == std::ifstream::traits_type::eof();
 }
