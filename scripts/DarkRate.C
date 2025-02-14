@@ -52,6 +52,10 @@ std::vector<float> BaselineCorrection(TArrayS *&Samples, float ADCTomV);
 /// @return bool true if the waveform is sinusoidal
 bool CheckNoise(std::vector<float> waveform, float waveThreshold=-2.5, int DRThreshold=5, int NBins=100, int iWave=0);
 
+
+////////////////////////////////////////////////////////////////////////////////
+/// START OF MAIN FUNCTION
+///
 /// @brief Main script that calculates the dark rate of a channel
 /// @param inFileName input ROOT file with waveforms
 /// @param outFileName output file name with histograms and dark rates for each threshold
