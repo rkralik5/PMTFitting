@@ -42,6 +42,7 @@ int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
 int fPreGate = 6; ///< Number of time bins before peak position to start int
+// TODO: #21 Try different values for the integration range and compare
 int fGate = 50; ///< Integration range for the waveform integration in time bins
 
 // If using CoMPASS outputs need to set these values manually
@@ -129,7 +130,7 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 										  int preGate=5, int gate=50);
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 										  int preGate, int gate, float& minTime,
-											float& minVolt);
+											float& minVolt, float& baseline);
 
 /// @brief Find the minimum and maximum of the charge distribution
 /// @param vecCharge Vector of all integrated charges
@@ -159,6 +160,7 @@ bool CheckEmptyFile(std::string outFileName);
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
 void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
+	// Load the input ROOT file
 	TFile* inFile = new TFile(inFileName.c_str(),"READ");
 	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+
 													   "_Fit";
@@ -175,33 +177,50 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	//tWaves->SetBranchAddress("wavex", &wavex);
 	//tWaves->SetBranchAddress("wavey", &wavey);
 
-	int Clocktime = -1; ///< Clocktime of the event (in Unix time)
+	//int Clocktime = -1; ///< Clocktime of the event (in Unix time)
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
-	tWaves->SetBranchAddress("Clocktime", &Clocktime);
+	//tWaves->SetBranchAddress("Clocktime", &Clocktime);
 	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
 	int NEntries = tWaves->GetEntries();
+
+	for(int gate = 20; gate <= 100; gate+=10){
+		fGate = gate;
+
 	std::vector<float> vecCharge; //< Vector of all integrated charges
 	vecCharge.reserve(NEntries);
 	std::vector<float> vecPedestal; //< Vector of integrated pedestal charges
 	vecPedestal.reserve(NEntries);
+	std::vector<float> vecBaseline; //< Vector of baseline voltages
+	vecBaseline.reserve(NEntries);
 	for (int i = 0; i < NEntries; i++){ // fill histogram
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
 		float mintime = 0; // get time of peak voltage in ns
 		float minvolt = 0; // get peak voltage in mV
-		//vecCharge.push_back(IntegrateCharge(wavex, wavey, fPreGate, fGate));
+		float baseline = 0; // get baseline voltage in mV
 		float charge = IntegrateCharge(Samples, ADCTomV, timeBinWidth,
-																	 fPreGate,	fGate, mintime, minvolt);
+																	 fPreGate,	fGate, mintime, minvolt,
+																	 baseline);
 		vecCharge.push_back(charge);
+		vecBaseline.push_back(baseline);
 		if(minvolt < fThreshold || mintime < fPeakTime-20 || mintime > fPeakTime+20)
 			vecPedestal.push_back(charge);
 	}
+/*
+	TH1F hBaseline("hBaseline","Baseline;Baseline [mV];Counts",100,992,994);
+	for(auto iBaseline : vecBaseline) hBaseline.Fill(iBaseline);
+	CenterTitles(&hBaseline);
+	TCanvas cBaseline("cBaseline","cBaseline");
+	cBaseline.cd();
+	hBaseline.Draw();
+	cBaseline.SaveAs((plotFileName+"_AltBaseline.pdf").c_str());*/
+	float avgBaseline = accumulate(vecBaseline.begin(),vecBaseline.end(),0.0)/vecBaseline.size();
 
 	// Find the minimum and maximum to fill a charge histogram
-	auto chargeMinmax = FindChargeMinmax(vecCharge, 5);
+	auto chargeMinmax = FindChargeMinmax(vecCharge, 10);
 	float min = chargeMinmax.first; float max = chargeMinmax.second;
 	TH1F *hCharge = new TH1F("charge",
 													 ";Integrated Charge [pC];Area Normalized (arb. units)", fNChargeBins, min, max);
@@ -276,10 +295,21 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 							<< ") trying to fix the exponential background" << std::endl;
 		if(pmt->GetParameter(2) < pmt->GetParameter(0) || pmt->GetParameter(0) > 10*q0){
 			std::cout << "Single PE mean < Pedestal mean - re-do the entire fit one at a time" << std::endl;
-			pmt->SetParameter(0,q0); // Mean of the pedestal
-			pmt->SetParameter(1,0.1*(q1-q0)); // Sigma of the pedestal
+			pmt->SetParameter(0,pedEstimate.GetParameter(1)); // Mean of the pedestal
+			pmt->SetParameter(1,pedEstimate.GetParameter(2)); // Sigma of the pedestal
 			pmt->SetParameter(2,q1); // Mean of the SPE peak
 			pmt->SetParameter(3,0.3*q1); // Expected SPE resolution is 30%
+			pmt->FixParameter(4,0); // NO Exponentional background contribution
+			pmt->SetParameter(6,0.1); // "True" number of PE (should be < 1 for SPE)
+			pmt->SetParameter(7,0.1);
+			hCharge->Fit("pmt","EMR"); //EM
+			std::cout << "Chi^2/NDF = " << pmt->GetChisquare()/pmt->GetNDF() << std::endl;
+		}else if(pmt->GetParameter(2)>max){
+			std::cout << "Single PE mean > max - re-do the entire fit" << std::endl;
+			pmt->SetParameter(0,pedEstimate.GetParameter(1)); // Mean of the pedestal
+			pmt->SetParameter(1,pedEstimate.GetParameter(2)); // Sigma of the pedestal
+			pmt->SetParameter(2,0.5*q1); // Reduce the mean of the SPE peak to half
+			pmt->SetParameter(3,0.15*q1); // Expected SPE resolution is 30%
 			pmt->FixParameter(4,0); // NO Exponentional background contribution
 			pmt->SetParameter(6,0.1); // "True" number of PE (should be < 1 for SPE)
 			pmt->SetParameter(7,0.1);
@@ -301,7 +331,6 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 		pmt->SetParLimits(5,1e-5, pmt->Eval(pmt->GetParameter(0))/pmt->GetParameter(7));
 		hCharge->Fit("pmt","EMR");
 	}
-
 
 	// Copy and draw the results of the fit to the individual components
 	TF1 *pmt0 = new TF1("pmt0",PMTF0,min,max,8);
@@ -403,12 +432,13 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	// Check if the file is empty and add the header if not
 	if(CheckEmptyFile(outFileName)){
-		outfile << "intrange,fname,chisqr,Q1,sigma,pe_res,gain_fit,gain_spe,gain_npe,gain_ped,pv_r_hist,n_pe\n";
+		outfile << "intrange,fname,chisqr,Q1,sigma,pe_res,gain_fit,gain_spe,gain_npe,gain_ped,pv_r_hist,n_pe,baseline\n";
 	}
 	outfile << fGate << "," << inFileName << "," << chisqr << ","
 					<< SPECharge << ","	<< SPESigma << "," << SPERes << ","
 					<< gain_fit << "," << gain_spe << "," << gain_npe << ","
-					<< gain_ped << "," << peakHist/valleyHist << ","	<< NPE_fit << "\n";
+					<< gain_ped << "," << peakHist/valleyHist << ","	<< NPE_fit
+					<< "," << avgBaseline << "\n";
 	outfile.close();
 
 	delete hCharge;
@@ -417,6 +447,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	delete pmt0;
 	delete pmt1;
 	delete pmt2;
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -493,7 +524,8 @@ float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 }
 
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
-										  int preGate, int gate, float& minTime, float& minVolt){
+										  int preGate, int gate, float& minTime, float& minVolt,
+											float& baseline){
 	// Convert waveform to vector for easier manipulation
 	std::vector<float> vecSamples;
 	vecSamples.reserve(Samples->GetSize());
@@ -521,6 +553,7 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 	}
 
 	// Make a vector for baseline calculation
+	// TODO: #20 Calculate the baseline from first N bins instead of the mean and compare
 	std::vector<float> vBaseline;
 	vBaseline.reserve(vecSamples.size()-gate);
 	for(auto i=0; i<vecSamples.size(); i++){
@@ -530,14 +563,19 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 
 	// Calculate the baseline as a truncated mean of 50% of values outside the gate
 	std::sort(vBaseline.begin(),vBaseline.end());
-	float baseline = 0;
+	baseline = 0;
 	int nBaseline = 0;
 	for(int iBln=vBaseline.size()/4; iBln<(vBaseline.size()-vBaseline.size()/4); iBln++){
 		baseline += vBaseline.at(iBln);
 		nBaseline++;
 	}
 	baseline /= (float)nBaseline;
-
+	
+/*
+	baseline = std::accumulate(vecSamples.begin()+5,
+														 vecSamples.begin()+fPeakTime-40,0.0)/
+														(fPeakTime-45);
+*/
 	// Correct the minVolt by subtracting the baseline
 	minVolt = baseline-minVolt;
 
