@@ -7,6 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <numeric> // for std::accumulate
 
 #include "TFile.h"
 #include "TTree.h"
@@ -58,6 +59,12 @@ void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 										  int preGate=5, int gate=50);
 
+/// @brief Trivial funciton to check if a csv file is empty (and needs a header)
+bool CheckEmptyFile(std::string outFileName);
+
+////////////////////////////////////////////////////////////////////////////////
+/// START OF MAIN FUNCTION
+///
 /// @brief Get PMT label from the inFileName
 /// @param inFileName Name of the input file with path and extension
 /// @return PMT label
@@ -74,6 +81,7 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	GetParams(inFile, ADCTomV, timeBinWidth,
 					  fResolution, fVoltLow, fVoltHigh, fFrequency);
 	
+	// TODO: #22 Make the MultiPE code work with different channels
 	TTree *tWaves = (TTree*)inFile->Get("Data");
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
 	tWaves->SetBranchAddress("Samples", &Samples);
@@ -89,6 +97,8 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
 																				fPreGate,	fGate));
 	}
+	float vecAverage = accumulate(vecCharge.begin(),vecCharge.end(),0.0)/vecCharge.size();
+	std::cout << "Vector average is " << vecAverage << std::endl;
 
 	// Find the minimum and maximum to fill a histogram	
 	auto chargeMinmax = minmax_element(vecCharge.begin(),vecCharge.end());
@@ -113,6 +123,7 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TF1 *pmt = hCharge->GetFunction("gaus");
 	double mean = pmt->GetParameter(1);
 	double sigma = pmt->GetParameter(2);
+	double NPE_calc = pow(mean/sigma,2);
 
 	// Now fit again with a Gaussian but only the peak to get the correct mean
 	hCharge->Fit("gaus","EM","",mean-1.3*sigma,mean+sigma);
@@ -121,9 +132,9 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	pmt->Draw("same");
 
 	// Number of Photo Electrons is simply mean/charge of 1 PE
-	double NPE = pmt->GetParameter(1)*1e-12/(gain*e);
-	std::cout << "NPE: " << NPE << std::endl;
-	double NPE_calc = pow(pmt->GetParameter(1)/pmt->GetParameter(2),2);
+	double NPE_gain = pmt->GetParameter(1)*1e-12/(gain*e);
+	std::cout << "NPE: " << NPE_gain << std::endl;
+	double NPE_calc2 = pow(vecAverage/pmt->GetParameter(2),2);
 
 	// Print the voltage
 	std::string VLabel = inFileName.substr(0,inFileName.find_last_of("."));
@@ -142,11 +153,15 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	std::ofstream outfile;
   outfile.open(outFileName.c_str(),
 							 std::ios_base::app); // append instead of overwrite
+	// Check if the file is empty and add the header if not
+	if(CheckEmptyFile(outFileName)){
+		outfile << "intrange,fname,chisqr,charge_avg,charge_full,sigma_full,charge,sigma,npe_calc,npe_err,npe_calc2\n";
+	}
 	outfile << fGate << "," << inFileName << ","
 					<< pmt->GetChisquare()/pmt->GetNDF() << ","
-					<< pmt->GetParameter(1) << ","
-					<< pmt->GetParameter(2) << ","
-					<< NPE << "," << NPE_calc << "\n";
+					<< vecAverage << "," << mean << "," << sigma << ","
+					<< pmt->GetParameter(1) << "," << pmt->GetParameter(2) << ","
+					<< NPE_calc << "," << 0.1*NPE_calc << "," << NPE_calc2 << "\n";
 	outfile.close();
 }
 
@@ -245,4 +260,9 @@ std::string GetPMTLabel(std::string inFileName){
 	getline(RestOfLine, PMTLabel, '_');
 
 	return PMTBrand+" "+PMTLabel;
+}
+
+bool CheckEmptyFile(std::string outFileName){
+	std::ifstream checkfile(outFileName.c_str());
+  return checkfile.peek() == std::ifstream::traits_type::eof();
 }
