@@ -73,7 +73,8 @@ std::string GetPMTLabel(std::string inFileName);
 /// @brief Main fit function that loads waves, defines fitting functions, does the fits, plots the result and saves it to a csv file
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
-void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
+void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
+	              int iChannel = 0){
 	TFile* inFile = new TFile(inFileName.c_str(),"READ");
 	// Get the parameters of the digitiser
 	float ADCTomV;
@@ -81,9 +82,11 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 	GetParams(inFile, ADCTomV, timeBinWidth,
 					  fResolution, fVoltLow, fVoltHigh, fFrequency);
 	
-	// TODO: #22 Make the MultiPE code work with different channels
+	//TODO: #24 Make the MultiPE code work with different channels
 	TTree *tWaves = (TTree*)inFile->Get("Data");
+	Short_t Channel = -1; ///< Channel number
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
+	tWaves->SetBranchAddress("Channel", &Channel);
 	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
@@ -94,6 +97,7 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 		if(i%1000 == 0)
 			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
+		if(Channel != iChannel) continue; // Only get the channel we want
 		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
 																				fPreGate,	fGate));
 	}
@@ -143,11 +147,13 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	c.Update();
 
-	std::string PMTLabel = GetPMTLabel(inFileName);
-	CornerLabel(PMTLabel);
+	//TODO: #25 fix the PMT label for the multi channel fits
+	//std::string PMTLabel = GetPMTLabel(inFileName);
+	//CornerLabel(PMTLabel);
 
-	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+"_Fit";
-	c.SaveAs((plotFileName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
+	//TODO: #26 Adapt this code to actual print the PMT type, label, voltage as columns
+	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."));
+	c.SaveAs((plotFileName+"_Ch"+std::to_string(Channel)+".pdf").c_str());
 
 	// Lets output this to some file
 	std::ofstream outfile;
