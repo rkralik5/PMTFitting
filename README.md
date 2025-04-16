@@ -17,5 +17,15 @@ ROOT files.
 Analysis scripts for waveform integration, dark rate analysis, or plotting.
 These scripts use the ROOT files from [convert](convert) as inputs
 
+# PMT Filename Parser
+
+The PMT measurements are saved in a structured format containing the necessary
+information. The filename parser extracts the PMT manufacturer, model, input
+voltage, channel, and measurement information from filenames such as:
+```
+Ch1_Hamamatsu_R12860_1300V_Ch2_Hamamatsu_R12860_1300V_CrosstalkStudy.root
+```
+
+
 [robertkralik]: https://github.com/rkralik5
 [mahdiTaaniLink]: https://github.com/mahditaani
