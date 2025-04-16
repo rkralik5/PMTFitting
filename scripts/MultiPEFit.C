@@ -143,7 +143,7 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 	float minimum = (float)*chargeMinmax.first;
 	float maximum = (float)*chargeMinmax.second;
 
-	TH1F *hCharge = new TH1F("charge",
+	TH1F *hCharge = new TH1F(("charge_"+PMTInfo.model).c_str(),
 													 ";Integrated Charge [pC];Area Normalized (arb. units)", fNChargeBins, minimum, maximum);
 	hCharge->GetXaxis()->CenterTitle();
 	hCharge->GetYaxis()->CenterTitle();
@@ -178,7 +178,6 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 
 	CornerLabel(PMTInfo.manufacturer+" "+PMTInfo.model);
 
-	//TODO: #26 Adapt this code to actual print the PMT type, label, voltage as columns
 	std::string plotLabel = parsedFile.path + "/"
 		+ PMTInfo.manufacturer + "_" + PMTInfo.model + "_"
 		+ std::to_string(PMTInfo.voltage) + "V"
@@ -282,4 +281,9 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
 
 	return charge;
+}
+
+bool CheckEmptyFile(std::string outFileName){
+	std::ifstream checkfile(outFileName.c_str());
+  return checkfile.peek() == std::ifstream::traits_type::eof();
 }

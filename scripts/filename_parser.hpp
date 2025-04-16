@@ -13,6 +13,7 @@ struct FileInfo {
   std::optional<float> channel;
   std::string manufacturer;
   std::string model;
+  std::string vstring;
   float voltage;
 };
 
@@ -69,13 +70,14 @@ ParsedFile parseFilename(const std::string& fullFilename) {
   // If it is, we expect the next three tokens to be manufacturer, model, and
   // voltage, otherwise they are the first three tokens
   size_t i = 0;
-  while (i + 3 < tokens.size()) {
+  while (i + 3 <= tokens.size()) {
     FileInfo info;
 
     if (tokens[i].substr(0, 2) == "Ch") {
       info.channel = std::stof(tokens[i].substr(2));
       info.manufacturer = tokens[i+1];
       info.model = tokens[i+2];
+      info.vstring = tokens[i+3];
       if (std::tolower(tokens[i+3].back()) != 'v') {
         throw std::invalid_argument("Invalid voltage format: "+tokens[i+3]);
       }
@@ -84,6 +86,7 @@ ParsedFile parseFilename(const std::string& fullFilename) {
     } else {
       info.manufacturer = tokens[i];
       info.model = tokens[i+1];
+      info.vstring = tokens[i+2];
       if (std::tolower(tokens[i+2].back()) != 'v') {
         throw std::invalid_argument("Invalid voltage format: "+tokens[i+2]);
       }
