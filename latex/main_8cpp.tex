@@ -1,0 +1,81 @@
+\doxysection{convert/main.cpp File Reference}
+\hypertarget{main_8cpp}{}\label{main_8cpp}\index{convert/main.cpp@{convert/main.cpp}}
+{\ttfamily \#include $<$iostream$>$}\newline
+{\ttfamily \#include $<$boost/property\+\_\+tree/xml\+\_\+parser.\+hpp$>$}\newline
+{\ttfamily \#include $<$boost/property\+\_\+tree/ptree.\+hpp$>$}\newline
+{\ttfamily \#include $<$boost/foreach.\+hpp$>$}\newline
+{\ttfamily \#include "{}TTree.\+h"{}}\newline
+{\ttfamily \#include "{}TFile.\+h"{}}\newline
+{\ttfamily \#include "{}TArray\+S.\+h"{}}\newline
+Include dependency graph for main.\+cpp\+:
+\nopagebreak
+\begin{figure}[H]
+\begin{center}
+\leavevmode
+\includegraphics[width=350pt]{main_8cpp__incl}
+\end{center}
+\end{figure}
+\doxysubsubsection*{Functions}
+\begin{DoxyCompactItemize}
+\item 
+void \mbox{\hyperlink{main_8cpp_a9d714a7fcc6cec4a49bf3efd4476edf1}{Plot\+Points}} (std\+::string line, TArrayS \texorpdfstring{$\ast$}{*}\&Samples)
+\begin{DoxyCompactList}\small\item\em Convert output of CAENScopt waveform values to vectors. \end{DoxyCompactList}\item 
+void \mbox{\hyperlink{main_8cpp_a5bfad6f7abac987e348a6f1259ae2c75}{Convert}} (std\+::string in\+Name, std\+::string out\+Name)
+\item 
+int \mbox{\hyperlink{main_8cpp_a0ddf1224851353fc92bfbff6f499fa97}{main}} (int argc, char \texorpdfstring{$\ast$}{*}argv\mbox{[}$\,$\mbox{]})
+\end{DoxyCompactItemize}
+
+
+\doxysubsection{Function Documentation}
+\Hypertarget{main_8cpp_a5bfad6f7abac987e348a6f1259ae2c75}\label{main_8cpp_a5bfad6f7abac987e348a6f1259ae2c75} 
+\index{main.cpp@{main.cpp}!Convert@{Convert}}
+\index{Convert@{Convert}!main.cpp@{main.cpp}}
+\doxysubsubsection{\texorpdfstring{Convert()}{Convert()}}
+{\footnotesize\ttfamily void Convert (\begin{DoxyParamCaption}\item[{std\+::string}]{in\+Name,  }\item[{std\+::string}]{out\+Name }\end{DoxyParamCaption})}
+
+\texorpdfstring{$<$}{<} Frequency of the digitiser
+
+\texorpdfstring{$<$}{<} Total number of samples
+
+\texorpdfstring{$<$}{<} Size of the waveform (number of time bins)
+
+\texorpdfstring{$<$}{<} Number of ADC bins (=2\texorpdfstring{$^\wedge$}{\string^}\+ADCResolution)
+
+\texorpdfstring{$<$}{<} Voltage range low
+
+\texorpdfstring{$<$}{<} Voltage range high
+
+\texorpdfstring{$<$}{<} Channel number
+
+\texorpdfstring{$<$}{<} Timestamp of the event from start of run
+
+\texorpdfstring{$<$}{<} Clocktime of the event (in Unix time)
+
+\texorpdfstring{$<$}{<} Array of samples (waveform values)\Hypertarget{main_8cpp_a0ddf1224851353fc92bfbff6f499fa97}\label{main_8cpp_a0ddf1224851353fc92bfbff6f499fa97} 
+\index{main.cpp@{main.cpp}!main@{main}}
+\index{main@{main}!main.cpp@{main.cpp}}
+\doxysubsubsection{\texorpdfstring{main()}{main()}}
+{\footnotesize\ttfamily int main (\begin{DoxyParamCaption}\item[{int}]{argc,  }\item[{char \texorpdfstring{$\ast$}{*}}]{argv\mbox{[}$\,$\mbox{]} }\end{DoxyParamCaption})}
+
+\Hypertarget{main_8cpp_a9d714a7fcc6cec4a49bf3efd4476edf1}\label{main_8cpp_a9d714a7fcc6cec4a49bf3efd4476edf1} 
+\index{main.cpp@{main.cpp}!PlotPoints@{PlotPoints}}
+\index{PlotPoints@{PlotPoints}!main.cpp@{main.cpp}}
+\doxysubsubsection{\texorpdfstring{PlotPoints()}{PlotPoints()}}
+{\footnotesize\ttfamily void Plot\+Points (\begin{DoxyParamCaption}\item[{std\+::string}]{line,  }\item[{TArrayS \texorpdfstring{$\ast$}{*}\&}]{Samples }\end{DoxyParamCaption})}
+
+
+
+Convert output of CAENScopt waveform values to vectors. 
+
+
+\begin{DoxyParams}{Parameters}
+{\em line} & String of space separated waveform values \\
+\hline
+{\em Samples} & Output TArrayS of waveform values \\
+\hline
+\end{DoxyParams}
+Which time bin
+
+Store the rest of the line that\textquotesingle{}s yet to be processed
+
+Hold each value

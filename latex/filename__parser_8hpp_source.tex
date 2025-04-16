@@ -1,0 +1,97 @@
+\doxysection{filename\+\_\+parser.\+hpp}
+\hypertarget{filename__parser_8hpp_source}{}\label{filename__parser_8hpp_source}\index{scripts/filename\_parser.hpp@{scripts/filename\_parser.hpp}}
+\mbox{\hyperlink{filename__parser_8hpp}{Go to the documentation of this file.}}
+\begin{DoxyCode}{0}
+\DoxyCodeLine{00001\ \textcolor{preprocessor}{\#pragma\ once}}
+\DoxyCodeLine{00002\ }
+\DoxyCodeLine{00003\ \textcolor{preprocessor}{\#include\ <string>}}
+\DoxyCodeLine{00004\ \textcolor{preprocessor}{\#include\ <vector>}}
+\DoxyCodeLine{00005\ \textcolor{preprocessor}{\#include\ <optional>}}
+\DoxyCodeLine{00006\ \textcolor{preprocessor}{\#include\ <stdexcept>}\ \ \textcolor{comment}{//\ for\ std::invalid\_argument}}
+\DoxyCodeLine{00007\ }
+\DoxyCodeLine{00012\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structFileInfo}{FileInfo}}\ \{}
+\DoxyCodeLine{00013\ \ \ std::optional<float>\ \mbox{\hyperlink{structFileInfo_a7c4b83c977278f738cac182a213925ad}{channel}};}
+\DoxyCodeLine{00014\ \ \ std::string\ \mbox{\hyperlink{structFileInfo_acf9b1d2a35ac6b3d2d2f4a7414d641ac}{manufacturer}};}
+\DoxyCodeLine{00015\ \ \ std::string\ \mbox{\hyperlink{structFileInfo_a1fc5e5ee78fbc707672c945dc530cd16}{model}};}
+\DoxyCodeLine{00016\ \ \ \textcolor{keywordtype}{float}\ \mbox{\hyperlink{structFileInfo_a3394b60bdef1f79bf62520d35d74b594}{voltage}};}
+\DoxyCodeLine{00017\ \};}
+\DoxyCodeLine{00018\ }
+\DoxyCodeLine{00023\ \textcolor{keyword}{struct\ }\mbox{\hyperlink{structParsedFile}{ParsedFile}}\ \{}
+\DoxyCodeLine{00024\ \ \ std::string\ \mbox{\hyperlink{structParsedFile_ada450393edec801b56a1f71e263f388a}{path}};}
+\DoxyCodeLine{00025\ \ \ std::string\ \mbox{\hyperlink{structParsedFile_a49891c58440bd7bb316bdaf72821c22d}{filename}};}
+\DoxyCodeLine{00026\ \ \ std::vector<FileInfo>\ \mbox{\hyperlink{structParsedFile_acacd58db4a90801a1d04a60931f5f9cf}{devices}};}
+\DoxyCodeLine{00027\ \ \ std::string\ \mbox{\hyperlink{structParsedFile_a22cbdbb7230d43fdb9db50b226ed848e}{description}};}
+\DoxyCodeLine{00028\ \};}
+\DoxyCodeLine{00029\ }
+\DoxyCodeLine{00037\ std::vector<std::string>\ \mbox{\hyperlink{filename__parser_8hpp_a7f07ab23f3c5a63c67c9a026284e7c03}{splitString}}(\textcolor{keyword}{const}\ std::string\&\ input,}
+\DoxyCodeLine{00038\ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \textcolor{keywordtype}{char}\ delimiter\ =\ \textcolor{charliteral}{'\_'})\ \{}
+\DoxyCodeLine{00039\ \ \ std::vector<std::string>\ tokens;}
+\DoxyCodeLine{00040\ \ \ std::string\ current;}
+\DoxyCodeLine{00041\ \ \ \textcolor{keywordflow}{for}\ (\textcolor{keywordtype}{char}\ c\ :\ input)\ \{}
+\DoxyCodeLine{00042\ \ \ \ \ \textcolor{keywordflow}{if}\ (c\ ==\ delimiter)\ \{}
+\DoxyCodeLine{00043\ \ \ \ \ \ \ \textcolor{keywordflow}{if}\ (!current.empty())\ tokens.push\_back(current);}
+\DoxyCodeLine{00044\ \ \ \ \ \ \ current.clear();}
+\DoxyCodeLine{00045\ \ \ \ \ \}\ \textcolor{keywordflow}{else}\ \{}
+\DoxyCodeLine{00046\ \ \ \ \ \ \ current\ +=\ c;}
+\DoxyCodeLine{00047\ \ \ \ \ \}}
+\DoxyCodeLine{00048\ \ \ \}}
+\DoxyCodeLine{00049\ \ \ \textcolor{keywordflow}{if}\ (!current.empty())\ tokens.push\_back(current);}
+\DoxyCodeLine{00050\ \ \ \textcolor{keywordflow}{return}\ tokens;}
+\DoxyCodeLine{00051\ \}}
+\DoxyCodeLine{00052\ }
+\DoxyCodeLine{00059\ \mbox{\hyperlink{structParsedFile}{ParsedFile}}\ \mbox{\hyperlink{filename__parser_8hpp_a9e377efb573a0946f78821fc3ce48810}{parseFilename}}(\textcolor{keyword}{const}\ std::string\&\ fullFilename)\ \{}
+\DoxyCodeLine{00060\ \ \ \mbox{\hyperlink{structParsedFile}{ParsedFile}}\ result;}
+\DoxyCodeLine{00061\ }
+\DoxyCodeLine{00062\ \ \ \textcolor{comment}{//\ Extract\ the\ filename\ without\ the\ path}}
+\DoxyCodeLine{00063\ \ \ result.\mbox{\hyperlink{structParsedFile_ada450393edec801b56a1f71e263f388a}{path}}\ =\ fullFilename.substr(0,\ fullFilename.find\_last\_of(\textcolor{charliteral}{'/'}));}
+\DoxyCodeLine{00064\ \ \ result.\mbox{\hyperlink{structParsedFile_a49891c58440bd7bb316bdaf72821c22d}{filename}}\ =\ fullFilename.substr(fullFilename.find\_last\_of(\textcolor{stringliteral}{"{}/"{}})+1);}
+\DoxyCodeLine{00065\ \ \ std::string\ baseName\ =\ result.\mbox{\hyperlink{structParsedFile_a49891c58440bd7bb316bdaf72821c22d}{filename}}.substr(0,\ result.\mbox{\hyperlink{structParsedFile_a49891c58440bd7bb316bdaf72821c22d}{filename}}.find\_last\_of(\textcolor{charliteral}{'.'}));}
+\DoxyCodeLine{00066\ }
+\DoxyCodeLine{00067\ \ \ \textcolor{comment}{//\ Split\ the\ base\ name\ into\ tokens\ using\ underscore\ as\ a\ delimiter}}
+\DoxyCodeLine{00068\ \ \ std::vector<std::string>\ tokens\ =\ \mbox{\hyperlink{filename__parser_8hpp_a7f07ab23f3c5a63c67c9a026284e7c03}{splitString}}(baseName);}
+\DoxyCodeLine{00069\ }
+\DoxyCodeLine{00070\ \ \ \textcolor{comment}{//\ Loop\ over\ channels\ and\ extract\ information}}
+\DoxyCodeLine{00071\ \ \ \textcolor{comment}{//\ The\ regex\ checks\ if\ the\ first\ token\ is\ a\ channel\ (e.g.\ "{}Ch1"{})}}
+\DoxyCodeLine{00072\ \ \ \textcolor{comment}{//\ If\ it\ is,\ we\ expect\ the\ next\ three\ tokens\ to\ be\ manufacturer,\ model,\ and}}
+\DoxyCodeLine{00073\ \ \ \textcolor{comment}{//\ voltage,\ otherwise\ they\ are\ the\ first\ three\ tokens}}
+\DoxyCodeLine{00074\ \ \ \textcolor{keywordtype}{size\_t}\ i\ =\ 0;}
+\DoxyCodeLine{00075\ \ \ \textcolor{keywordflow}{while}\ (i\ +\ 3\ <\ tokens.size())\ \{}
+\DoxyCodeLine{00076\ \ \ \ \ \mbox{\hyperlink{structFileInfo}{FileInfo}}\ info;}
+\DoxyCodeLine{00077\ }
+\DoxyCodeLine{00078\ \ \ \ \ \textcolor{keywordflow}{if}\ (tokens[i].substr(0,\ 2)\ ==\ \textcolor{stringliteral}{"{}Ch"{}})\ \{}
+\DoxyCodeLine{00079\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_a7c4b83c977278f738cac182a213925ad}{channel}}\ =\ std::stof(tokens[i].substr(2));}
+\DoxyCodeLine{00080\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_acf9b1d2a35ac6b3d2d2f4a7414d641ac}{manufacturer}}\ =\ tokens[i+1];}
+\DoxyCodeLine{00081\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_a1fc5e5ee78fbc707672c945dc530cd16}{model}}\ =\ tokens[i+2];}
+\DoxyCodeLine{00082\ \ \ \ \ \ \ \textcolor{keywordflow}{if}\ (std::tolower(tokens[i+3].back())\ !=\ \textcolor{charliteral}{'v'})\ \{}
+\DoxyCodeLine{00083\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{throw}\ std::invalid\_argument(\textcolor{stringliteral}{"{}Invalid\ voltage\ format:\ "{}}+tokens[i+3]);}
+\DoxyCodeLine{00084\ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00085\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_a3394b60bdef1f79bf62520d35d74b594}{voltage}}\ =\ std::stof(tokens[i+3].substr(0,\ tokens[i+3].size()-\/1));}
+\DoxyCodeLine{00086\ \ \ \ \ \ \ i\ +=\ 4;}
+\DoxyCodeLine{00087\ \ \ \ \ \}\ \textcolor{keywordflow}{else}\ \{}
+\DoxyCodeLine{00088\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_acf9b1d2a35ac6b3d2d2f4a7414d641ac}{manufacturer}}\ =\ tokens[i];}
+\DoxyCodeLine{00089\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_a1fc5e5ee78fbc707672c945dc530cd16}{model}}\ =\ tokens[i+1];}
+\DoxyCodeLine{00090\ \ \ \ \ \ \ \textcolor{keywordflow}{if}\ (std::tolower(tokens[i+2].back())\ !=\ \textcolor{charliteral}{'v'})\ \{}
+\DoxyCodeLine{00091\ \ \ \ \ \ \ \ \ \textcolor{keywordflow}{throw}\ std::invalid\_argument(\textcolor{stringliteral}{"{}Invalid\ voltage\ format:\ "{}}+tokens[i+2]);}
+\DoxyCodeLine{00092\ \ \ \ \ \ \ \}}
+\DoxyCodeLine{00093\ \ \ \ \ \ \ info.\mbox{\hyperlink{structFileInfo_a3394b60bdef1f79bf62520d35d74b594}{voltage}}\ =\ std::stof(tokens[i+2].substr(0,\ tokens[i+2].size()-\/1));}
+\DoxyCodeLine{00094\ \ \ \ \ \ \ i\ +=\ 3;}
+\DoxyCodeLine{00095\ \ \ \ \ \}}
+\DoxyCodeLine{00096\ }
+\DoxyCodeLine{00097\ \ \ \ \ result.\mbox{\hyperlink{structParsedFile_acacd58db4a90801a1d04a60931f5f9cf}{devices}}.push\_back(info);}
+\DoxyCodeLine{00098\ \ \ \}}
+\DoxyCodeLine{00099\ }
+\DoxyCodeLine{00100\ \ \ \textcolor{comment}{//\ If\ there\ are\ any\ remaining\ tokens,\ they\ are\ part\ of\ the\ description}}
+\DoxyCodeLine{00101\ \ \ \textcolor{keywordflow}{if}\ (i\ <\ tokens.size())\ \{}
+\DoxyCodeLine{00102\ \ \ \ \ std::string\ desc\ =\ tokens[i];}
+\DoxyCodeLine{00103\ \ \ \ \ \textcolor{keywordflow}{for}\ (\textcolor{keywordtype}{size\_t}\ j\ =\ i\ +\ 1;\ j\ <\ tokens.size();\ ++j)\ \{}
+\DoxyCodeLine{00104\ \ \ \ \ \ \ desc\ +=\ \textcolor{stringliteral}{"{}\_"{}}\ +\ tokens[j];}
+\DoxyCodeLine{00105\ \ \ \ \ \}}
+\DoxyCodeLine{00106\ \ \ \ \ result.\mbox{\hyperlink{structParsedFile_a22cbdbb7230d43fdb9db50b226ed848e}{description}}\ =\ desc;}
+\DoxyCodeLine{00107\ \ \ \}\ \textcolor{keywordflow}{else}\ \{}
+\DoxyCodeLine{00108\ \ \ \ \ result.\mbox{\hyperlink{structParsedFile_a22cbdbb7230d43fdb9db50b226ed848e}{description}}\ =\ \textcolor{stringliteral}{"{}"{}};}
+\DoxyCodeLine{00109\ \ \ \}}
+\DoxyCodeLine{00110\ }
+\DoxyCodeLine{00111\ \ \ \textcolor{keywordflow}{return}\ result;}
+\DoxyCodeLine{00112\ \}}
+
+\end{DoxyCode}
