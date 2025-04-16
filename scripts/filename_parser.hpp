@@ -5,10 +5,10 @@
 #include <optional>
 #include <stdexcept>  // for std::invalid_argument
 
-/**
- * Represent PMT information from the measurement filename.
- * If multiple channels are used, the `channel` will be set (e.g. "Ch1").
- */
+///
+/// Represent PMT information from the measurement filename.
+/// If multiple channels are used, the `channel` will be set (e.g. "Ch1").
+///
 struct FileInfo {
   std::optional<float> channel;
   std::string manufacturer;
@@ -16,10 +16,7 @@ struct FileInfo {
   float voltage;
 };
 
-/**
- * Holds the result of parsing a PMT measurement filename.
- * For multi-channel files, this contains multiple FileInfo entries and a description.
- */
+/// Holds the result of parsing a PMT measurement filename.
 struct ParsedFile {
   std::string path;
   std::string filename;
@@ -27,13 +24,13 @@ struct ParsedFile {
   std::string description;
 };
 
-/**
- * Splits a string into tokens based on a specified delimiter.
- * 
- * @param input The input string to be split
- * @param delimiter The character used to split the string (default is '_')
- * @return A vector of strings containing the tokens
- */
+///
+/// Splits a string into tokens based on a specified delimiter.
+///
+/// @param input The input string to be split
+/// @param delimiter The character used to split the string (default is '_')
+/// @return A vector of strings containing the tokens
+///
 std::vector<std::string> splitString(const std::string& input,
                                      char delimiter = '_') {
   std::vector<std::string> tokens;
@@ -50,12 +47,12 @@ std::vector<std::string> splitString(const std::string& input,
   return tokens;
 }
 
-/**
- * Parses a PMT measurement filename and extracts structured information.
- * 
- * @param filename The full filename, e.g. "Ch1_Hamamatsu_R12860_1300V.root"
- * @return ParsedFile object containing extracted metadata
- */
+///
+/// Parses a PMT measurement filename and extracts structured information.
+/// 
+/// @param filename The full filename, e.g. "Ch1_Hamamatsu_R12860_1300V.root"
+/// @return ParsedFile object containing extracted metadata
+///
 ParsedFile parseFilename(const std::string& fullFilename) {
   ParsedFile result;
 
