@@ -21,6 +21,8 @@
 #include "TLegend.h"
 #include "rootlogon.C"
 
+#include "filename_parser.hpp"
+
 #define PI 3.141592654
 int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
@@ -65,24 +67,54 @@ bool CheckEmptyFile(std::string outFileName);
 ////////////////////////////////////////////////////////////////////////////////
 /// START OF MAIN FUNCTION
 ///
-/// @brief Get PMT label from the inFileName
-/// @param inFileName Name of the input file with path and extension
-/// @return PMT label
-std::string GetPMTLabel(std::string inFileName);
-
 /// @brief Main fit function that loads waves, defines fitting functions, does the fits, plots the result and saves it to a csv file
 /// @param inFileName (string) Name of the input ROOT file
 /// @param outFileName (string) Name of the output csv file
 void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
-	              int iChannel = 0){
+	              int iChannel = -1){
 	TFile* inFile = new TFile(inFileName.c_str(),"READ");
+	if(inFile->IsZombie()){
+		std::cerr << "Could not open file " << inFileName << std::endl;
+		return;
+	}
+
+	// Get the measurement description from the filename
+	ParsedFile parsedFile = parseFilename(inFileName);
+	std::cout << "Analysing measurement: "
+						<< parsedFile.description << std::endl;
+	std::cout << "This measurement contains " << parsedFile.devices.size()
+						<< " PMTs:" << std::endl;
+	for(auto &device : parsedFile.devices){
+		std::cout << device.manufacturer << " PMT " << device.model
+							<< " at " << device.voltage <<"V";
+		if(device.channel.has_value()){
+			std::cout << " on channel " << device.channel.value();
+		}
+		std::cout << std::endl;
+	}
+
+	// If we specified channel, figure out which device it corresponds to
+	FileInfo PMTInfo;
+	if(iChannel != -1){
+		for(auto &device : parsedFile.devices){
+			if(device.channel.has_value() && device.channel.value() == iChannel){
+				PMTInfo = device;
+				break;
+			}
+		}
+	} else { // If no channel is specified then use the first device
+		PMTInfo = parsedFile.devices[0];
+	}
+	std::cout << "Using PMT " << PMTInfo.manufacturer << " "
+						<< PMTInfo.model << " at " << PMTInfo.voltage
+						<< "V on channel " << iChannel << std::endl;
+
 	// Get the parameters of the digitiser
 	float ADCTomV;
 	float timeBinWidth;
 	GetParams(inFile, ADCTomV, timeBinWidth,
 					  fResolution, fVoltLow, fVoltHigh, fFrequency);
 	
-	//TODO: #24 Make the MultiPE code work with different channels
 	TTree *tWaves = (TTree*)inFile->Get("Data");
 	Short_t Channel = -1; ///< Channel number
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
@@ -101,6 +133,7 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
 																				fPreGate,	fGate));
 	}
+	std::cout << std::endl;
 	float vecAverage = accumulate(vecCharge.begin(),vecCharge.end(),0.0)/vecCharge.size();
 	std::cout << "Vector average is " << vecAverage << std::endl;
 
@@ -140,20 +173,16 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 	std::cout << "NPE: " << NPE_gain << std::endl;
 	double NPE_calc2 = pow(vecAverage/pmt->GetParameter(2),2);
 
-	// Print the voltage
-	std::string VLabel = inFileName.substr(0,inFileName.find_last_of("."));
-	VLabel = VLabel.substr(0,VLabel.find_last_of("_"));
-	VLabel = VLabel.substr(VLabel.find_last_of("_")+1);
-
 	c.Update();
 
-	//TODO: #25 fix the PMT label for the multi channel fits
-	//std::string PMTLabel = GetPMTLabel(inFileName);
-	//CornerLabel(PMTLabel);
+	CornerLabel(PMTInfo.manufacturer+" "+PMTInfo.model);
 
 	//TODO: #26 Adapt this code to actual print the PMT type, label, voltage as columns
-	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."));
-	c.SaveAs((plotFileName+"_Ch"+std::to_string(Channel)+".pdf").c_str());
+	std::string plotLabel = parsedFile.path + "/"
+		+ PMTInfo.manufacturer + "_" + PMTInfo.model + "_"
+		+ std::to_string(PMTInfo.voltage) + "V"
+		+ parsedFile.description + ".pdf";
+	c.SaveAs(plotLabel.c_str());
 
 	// Lets output this to some file
 	std::ofstream outfile;
@@ -161,10 +190,12 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 							 std::ios_base::app); // append instead of overwrite
 	// Check if the file is empty and add the header if not
 	if(CheckEmptyFile(outFileName)){
-		outfile << "intrange,fname,chisqr,charge_avg,charge_full,sigma_full,charge,sigma,npe_calc,npe_err,npe_calc2\n";
+		outfile << "path,description,channel,pmt,model,voltage,intrange,chisqr,charge_avg,charge_full,sigma_full,charge,sigma,npe_calc,npe_err,npe_calc2\n";
 	}
-	outfile << fGate << "," << inFileName << ","
-					<< pmt->GetChisquare()/pmt->GetNDF() << ","
+	outfile << parsedFile.path << "," << parsedFile.description << ","
+					<< PMTInfo.channel.value_or(-1) << "," << PMTInfo.manufacturer << ","
+					<< PMTInfo.model << ","	<< PMTInfo.voltage << "," 
+					<< fGate << "," << pmt->GetChisquare()/pmt->GetNDF() << ","
 					<< vecAverage << "," << mean << "," << sigma << ","
 					<< pmt->GetParameter(1) << "," << pmt->GetParameter(2) << ","
 					<< NPE_calc << "," << 0.1*NPE_calc << "," << NPE_calc2 << "\n";
@@ -250,25 +281,4 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
 
 	return charge;
-}
-
-std::string GetPMTLabel(std::string inFileName){
-	// Remove the path from inFileName
-	std::string inFile = inFileName.substr(inFileName.find_last_of("/")+1);
-
-	// Get everything before first _ into PMTBrand
-  std::stringstream RestOfLine(inFile);
-  std::string PMTBrand;
-	getline(RestOfLine, PMTBrand, '_');
-	
-	// Second value before _ is the PMTLabel
-	std::string PMTLabel;
-	getline(RestOfLine, PMTLabel, '_');
-
-	return PMTBrand+" "+PMTLabel;
-}
-
-bool CheckEmptyFile(std::string outFileName){
-	std::ifstream checkfile(outFileName.c_str());
-  return checkfile.peek() == std::ifstream::traits_type::eof();
 }

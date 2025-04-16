@@ -1,0 +1,17 @@
+\chapter{README}
+\hypertarget{md_README}{}\label{md_README}\index{README@{README}}
+This repository contains ROOT-\/based code designed for processing and analysing PMT waveform data from the CAEN desktop digitiser.
+
+The code currently works with outputs from the CAEN Scope software. In the future, the plan is to update it to also work with Co\+MPASS.
+
+This repository was copied from an original public repository with the same name from \href{https://github.com/mahditaani}{\texttt{ @mahditaani}} and upgraded by \href{https://github.com/rkralik5}{\texttt{ @rkralik5}}
+
+The structure of the repository is as follows\+: \hypertarget{md_README_autotoc_md0}{}\doxysection{\texorpdfstring{\mbox{[}convert\mbox{]}(convert)}{[convert](convert)}}\label{md_README_autotoc_md0}
+Convert outputs from the CAENScope software (in the form of xml files) into ROOT files.\hypertarget{md_README_autotoc_md1}{}\doxysection{\texorpdfstring{\mbox{[}scripts\mbox{]}(scripts)}{[scripts](scripts)}}\label{md_README_autotoc_md1}
+Analysis scripts for waveform integration, dark rate analysis, or plotting. These scripts use the ROOT files from \mbox{[}convert\mbox{]}(convert) as inputs\hypertarget{md_README_autotoc_md2}{}\doxysection{\texorpdfstring{PMT Filename Parser}{PMT Filename Parser}}\label{md_README_autotoc_md2}
+The PMT measurements are saved in a structured format containing the necessary information. The filename parser extracts the PMT manufacturer, model, input voltage, channel, and measurement information from filenames such as\+: 
+\begin{DoxyCode}{0}
+\DoxyCodeLine{Ch1\_Hamamatsu\_R12860\_1300V\_Ch2\_Hamamatsu\_R12860\_1300V\_CrosstalkStudy.root}
+
+\end{DoxyCode}
+ 
