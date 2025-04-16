@@ -1,5 +1,6 @@
 #include <vector>
 #include <iostream>
+#include <numeric> // for std::accumulate
 #include "TFile.h"
 #include "TTree.h"
 #include "TGraph.h"
@@ -7,6 +8,23 @@
 #include "TCanvas.h"
 #include "TRandom3.h"
 #include "TArrayS.h"
+#include "TMath.h"
+#include "TStyle.h"
+#include "TLegend.h"
+#include "TROOT.h"
+
+#include "filename_parser.hpp"
+#include "rootlogon.C"
+
+int fImpedance = 50; ///< Impedance in Ohm
+int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
+double e = 1.602e-19;
+int fPreGate = 6; ///< Number of time bins before peak position to start int
+int fGate = 150; ///< Integration range for the waveform integration in time bins
+
+// Values to estimate the initial shape of the pedestal
+float fThreshold = 0.5; ///< Threshold for pedestal in mV (not used in fit)
+int fPeakTime = 390; ///< Approx. time of the peak in ns (not used in fit)
 
 // If using CoMPASS outputs need to set these values manually
 #define fResolution 500 ///< Number of ADC bins (=2^ADCResolution)
@@ -164,7 +182,7 @@ baseline /= (float)nBaseline;
 */
 
 // 1st baseline was with fPeakTime-40
-baseline = std::accumulate(vecSamples.begin()+5,
+baseline = accumulate(vecSamples.begin()+5,
 				 vecSamples.begin()+fPeakTime-100,0.0)/
 				(fPeakTime-105);
 
