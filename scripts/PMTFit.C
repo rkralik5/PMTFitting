@@ -24,6 +24,7 @@
 #include <fstream>
 #include <algorithm>
 #include <numeric> // for std::accumulate
+#include <string>
 
 #include "TFile.h"
 #include "TTree.h"
@@ -36,6 +37,8 @@
 #include "TLatex.h"
 #include "TLegend.h"
 #include "rootlogon.C"
+
+#include "filename_parser.hpp"
 
 #define PI 3.141592654
 int fImpedance = 50; ///< Impedance in Ohm
@@ -145,11 +148,6 @@ std::pair<float,float> FindChargeMinmax(std::vector<float> &vecCharge,
 /// @return Gaussian fit of the pedestal
 TF1 EstimatePedestal(std::vector<float> &vecPed, float& pedIntegral);
 
-/// @brief Get PMT label from the inFileName
-/// @param inFileName Name of the input file with path and extension
-/// @return PMT label
-std::string GetPMTLabel(std::string inFileName);
-
 /// @brief Trivial funciton to check if a csv file is empty (and needs a header)
 bool CheckEmptyFile(std::string outFileName);
 
@@ -162,8 +160,15 @@ bool CheckEmptyFile(std::string outFileName);
 void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	// Load the input ROOT file
 	TFile* inFile = new TFile(inFileName.c_str(),"READ");
-	std::string plotFileName = inFileName.substr(0,inFileName.find_last_of("."))+
-													   "_Fit";
+	if(inFile->IsZombie()){
+		std::cerr << "Could not open file " << inFileName << std::endl;
+		return;
+	}
+	ParsedFile parsedFile = parseFilename(inFileName);
+	FileInfo PMTInfo = parsedFile.devices[0];
+	
+	std::string plotName = inFileName.substr(0,inFileName.find_last_of('.'));
+	plotName = plotName + "_Fit";
 
 	// Get the parameters of the digitiser
 	float ADCTomV;
@@ -177,16 +182,14 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	//tWaves->SetBranchAddress("wavex", &wavex);
 	//tWaves->SetBranchAddress("wavey", &wavey);
 
-	//int Clocktime = -1; ///< Clocktime of the event (in Unix time)
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
-	//tWaves->SetBranchAddress("Clocktime", &Clocktime);
 	tWaves->SetBranchAddress("Samples", &Samples);
 
 	// Calculate the integrated charges
 	int NEntries = tWaves->GetEntries();
 
-	for(int gate = 20; gate <= 100; gate+=10){
-		fGate = gate;
+	//for(int gate = 20; gate <= 100; gate+=10){
+	//	fGate = gate;
 
 	std::vector<float> vecCharge; //< Vector of all integrated charges
 	vecCharge.reserve(NEntries);
@@ -216,7 +219,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	TCanvas cBaseline("cBaseline","cBaseline");
 	cBaseline.cd();
 	hBaseline.Draw();
-	cBaseline.SaveAs((plotFileName+"_AltBaseline.pdf").c_str());*/
+	cBaseline.SaveAs((plotName+"_AltBaseline.pdf").c_str());*/
 	float avgBaseline = accumulate(vecBaseline.begin(),vecBaseline.end(),0.0)/vecBaseline.size();
 
 	// Find the minimum and maximum to fill a charge histogram
@@ -250,8 +253,6 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	gStyle->SetOptStat(0);
 	gStyle->SetOptFit(1);
 	hCharge->Draw("axis");
-
-	//TODO: #6 Add option to do multi-PE fit as well
 
 	//Use TSpectrum to find the peak candidates
   TSpectrum *s = new TSpectrum(2);
@@ -362,20 +363,17 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	leg.Draw("same");
 
 	// Print the voltage
-	std::string VLabel = inFileName.substr(0,inFileName.find_last_of("."));
-	VLabel = VLabel.substr(VLabel.find_last_of("_")+1);
-	TText text(.4,.8,("Input: "+VLabel).c_str());
+	TText text(.4,.8,("Input: "+PMTInfo.vstring).c_str());
 	text.SetNDC();
 	text.Draw("same");
 	c.Update();
 
 	// Add the PMT label to the plot
-	std::string PMTLabel = GetPMTLabel(inFileName);
-	CornerLabel(PMTLabel);
+	CornerLabel(PMTInfo.manufacturer+" "+PMTInfo.model);
 
-	//c.SaveAs((plotFileName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
+	//c.SaveAs((plotName+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 	c.SetLogy();
-	c.SaveAs((plotFileName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
+	c.SaveAs((plotName+"_Logy"+"_Gate"+std::to_string(fGate)+".pdf").c_str());
 
 	// Calculate the parameters of the fit
 	double chisqr = pmt->GetChisquare()/pmt->GetNDF();
@@ -432,9 +430,12 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 
 	// Check if the file is empty and add the header if not
 	if(CheckEmptyFile(outFileName)){
-		outfile << "intrange,fname,chisqr,Q1,sigma,pe_res,gain_fit,gain_spe,gain_npe,gain_ped,pv_r_hist,n_pe,baseline\n";
+		outfile << "path,description,channel,pmt,model,voltage,intrange,chisqr,Q1,sigma,pe_res,gain_fit,gain_spe,gain_npe,gain_ped,pv_r_hist,n_pe,baseline\n";
 	}
-	outfile << fGate << "," << inFileName << "," << chisqr << ","
+	outfile << parsedFile.path << "," << parsedFile.description << ","
+					<< PMTInfo.channel.value_or(-1) << "," << PMTInfo.manufacturer << ","
+					<< PMTInfo.model << ","	<< PMTInfo.voltage << ","
+					<< fGate << ","	<< chisqr << ","
 					<< SPECharge << ","	<< SPESigma << "," << SPERes << ","
 					<< gain_fit << "," << gain_spe << "," << gain_npe << ","
 					<< gain_ped << "," << peakHist/valleyHist << ","	<< NPE_fit
@@ -447,7 +448,7 @@ void PMTFit(std::string inFileName, std::string outFileName="Output.csv"){
 	delete pmt0;
 	delete pmt1;
 	delete pmt2;
-	}
+	//}
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -724,22 +725,6 @@ void SetParametersFromFitResult(TF1*& fOut, TF1*& fIn){
 							<< std::endl;
 		fOut->SetParLimits(i,parmin,parmax);
 	}
-}
-
-std::string GetPMTLabel(std::string inFileName){
-	// Remove the path from inFileName
-	std::string inFile = inFileName.substr(inFileName.find_last_of("/")+1);
-
-	// Get everything before first _ into PMTBrand
-  std::stringstream RestOfLine(inFile);
-  std::string PMTBrand;
-	getline(RestOfLine, PMTBrand, '_');
-	
-	// Second value before _ is the PMTLabel
-	std::string PMTLabel;
-	getline(RestOfLine, PMTLabel, '_');
-
-	return PMTBrand+" "+PMTLabel;
 }
 
 bool CheckEmptyFile(std::string outFileName){
