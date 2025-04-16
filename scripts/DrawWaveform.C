@@ -55,6 +55,7 @@ void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 	int preGate, int gate, float& minTime, float& minVolt, float& baseline);
 
+// TODO: #29 Make sure the DrawWaveform function works as expected
 /// @brief Draw a random selection of waveforms from a ROOT file
 /// @param inFileName Name of the input ROOT file
 /// @param outFileName Name of the output ROOT file. Default SampleWaveforms.root
