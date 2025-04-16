@@ -39,6 +39,7 @@ float gain = 4973130; ///< Gain for this specific PMT
 #define fFrequency 500e6 ///< Frequency of the digitiser in Hz
 #define fWindowSize 600 ///< Size of the waveform (number of time bins)
 
+// TODO: #30 Separate the GetParams script into a separate general file
 /// @brief Get the conversion factor of ADC bins to mV and the size of the waveform in seconds
 /// @param inFile Input ROOT file - if it has a Device TTree, it will use the values from there
 /// @param ADCTomV Return conversion factor from ADC bins to mV
