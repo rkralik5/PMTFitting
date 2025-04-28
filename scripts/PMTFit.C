@@ -478,6 +478,7 @@ void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 	timeBinWidth = 1e9/frequency;
 }
 
+// TODO: #32 Separate the charge intgeration into a separate script
 float IntegrateCharge(std::vector<float> *&wx, std::vector<float> *&wy,
 										  int preGate, int gate){
 	int timeBinWidth = wx->at(1) - wx->at(0);
