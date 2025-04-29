@@ -70,10 +70,15 @@ void DrawWaveform(std::string inFileName,
 	float timeBinWidth;
 	GetParams(&inFile, ADCTomV, timeBinWidth,
 						fResolution, fVoltLow, fVoltHigh, fFrequency);
-		
+	
+	
 	TTree *tWaves = (TTree*)inFile.Get("Data");
 	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
 	tWaves->SetBranchAddress("Samples", &Samples);
+
+	Short_t Channel = -1; ///< Channel number
+	tWaves->SetBranchAddress("Channel", &Channel);
+	
 
 	TFile outFile(outFileName.c_str(),"RECREATE");
 	outFile.cd();
@@ -97,7 +102,7 @@ void DrawWaveform(std::string inFileName,
 			grWaveform.AddPoint(iSample*timeBinWidth,ADCTomV*Samples->At(iSample));
 		}
 
-		grWaveform.SetTitle(Form("Waveform_%i",iPlot));
+		grWaveform.SetTitle(Form("Waveform_%i_Channel_%i",iPlot, Channel));
 		grWaveform.GetXaxis()->SetTitle("Time [ns]");
 		grWaveform.GetXaxis()->CenterTitle();
 		grWaveform.GetYaxis()->SetTitle("Output voltage [mV]");
