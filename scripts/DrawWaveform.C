@@ -62,7 +62,7 @@ float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
 /// @param NPlots Int number of waveforms to be drawn. Default is 5
 void DrawWaveform(std::string inFileName,
 								  std::string outFileName="SampleWaveforms.root",
-									int NPlots=5){
+									int NPlots=5, int setChannel=-1){
 	TFile inFile(inFileName.c_str(),"READ");
 
 	// Get the parameters of the digitiser
@@ -86,9 +86,14 @@ void DrawWaveform(std::string inFileName,
 	// Get a random waveform and plot it with a TGraph
 	int NEntries = tWaves->GetEntries();
 	TRandom3 rand;
-	for (int iPlot = 1; iPlot < NPlots; iPlot++){ // fill histogram
+	int iPlot = 1;
+	while (iPlot <= NPlots){ // fill histogram
 		int iEntry = rand.Integer(NEntries);
 		tWaves->GetEntry(iEntry);
+
+		// If you only want one channel you can use setChannel parameter
+		if(setChannel>0 && Channel!=setChannel) continue;
+
 		float mintime = 0; // get time of peak voltage in ns
 		float minvolt = 0; // get peak voltage in mV
 		float baseline = 0; // get baseline voltage in mV
@@ -96,21 +101,46 @@ void DrawWaveform(std::string inFileName,
 																	 fPreGate,	fGate, mintime, minvolt,
 																	 baseline);
     
-		new TCanvas;
+		TCanvas c(Form("Waveform_%i_Channel_%i",iPlot, Channel),"");
+		gStyle->SetOptStat(0);
 		TGraph grWaveform(Samples->GetSize());
 		for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
 			grWaveform.AddPoint(iSample*timeBinWidth,ADCTomV*Samples->At(iSample));
 		}
 
-		grWaveform.SetTitle(Form("Waveform_%i_Channel_%i",iPlot, Channel));
+		grWaveform.SetTitle(Form("Waveform %i in Channel %i",iPlot, Channel));
 		grWaveform.GetXaxis()->SetTitle("Time [ns]");
 		grWaveform.GetXaxis()->CenterTitle();
 		grWaveform.GetYaxis()->SetTitle("Output voltage [mV]");
 		grWaveform.GetYaxis()->CenterTitle();
-		grWaveform.SetName(Form("Waveform_%i",iPlot));
-		//grWaveform.GetXaxis()->SetRangeUser(wavex->front(),wavex->back());
+		grWaveform.SetName(Form("Graph_%i",iPlot));
 		grWaveform.Draw();
-		grWaveform.Write();
+		//grWaveform.Write();
+
+		//Draw baseline and preGate/Gate
+		c.Update();
+		TMarker mMinimum(mintime,baseline-minvolt,29);
+		mMinimum.SetMarkerColor(kYellow+3); mMinimum.SetMarkerSize(2);
+		mMinimum.Draw("same");
+		TLine lBaseline(gPad->GetUxmin(), baseline, gPad->GetUxmax(), baseline);
+		lBaseline.SetLineColor(kRed+1); lBaseline.SetLineWidth(2);
+		lBaseline.Draw("same");
+		float pregate = mintime - fPreGate*timeBinWidth;
+		float gate    = pregate + fGate*timeBinWidth;
+		TLine lPreGate(pregate, gPad->GetUymin(), pregate, gPad->GetUymax());
+		lPreGate.SetLineStyle(kDashed); lPreGate.SetLineWidth(2);
+		lPreGate.Draw("same");
+		TLine lGate(gate, gPad->GetUymin(), gate, gPad->GetUymax());
+		lGate.SetLineStyle(kDashed); lGate.SetLineWidth(2);
+		lGate.Draw("same");
+
+		TLegend leg(0.5,0.15,0.85,0.5);
+		leg.AddEntry(&mMinimum,"Minimum voltage","p");
+		leg.AddEntry(&lBaseline,"Baseline","l");
+		leg.AddEntry(&lPreGate,"Integration range","l");
+		leg.Draw("same");
+		c.Write();
+		iPlot++;
 	}
 }
 
@@ -140,66 +170,66 @@ void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
 }
 
 float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
-	int preGate, int gate, float& minTime, float& minVolt,
-	float& baseline){
-// Convert waveform to vector for easier manipulation
-std::vector<float> vecSamples;
-vecSamples.reserve(Samples->GetSize());
-for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
-vecSamples.push_back(ADCTomV*Samples->At(iSample));
-}
+											int preGate, int gate, float& minTime, float& minVolt,
+											float& baseline){
+	// Convert waveform to vector for easier manipulation
+	std::vector<float> vecSamples;
+	vecSamples.reserve(Samples->GetSize());
+	for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
+		vecSamples.push_back(ADCTomV*Samples->At(iSample));
+	}
 
-// Find the minimum voltage
-// Don't look within a 5 bin-wide buffer in beginning and end, which would 
-// have incomplete signal
-int minPos = std::distance(vecSamples.begin(),
+	// Find the minimum voltage
+	// Don't look within a 5 bin-wide buffer in beginning and end, which would 
+	// have incomplete signal
+	int minPos = std::distance(vecSamples.begin(),
 				 std::min_element(vecSamples.begin()+5,
 													 vecSamples.end()-5));
 
-// Minimum time is just the minPos multiplied by the time resolution
-minTime = minPos*timeBinWidth;
-minVolt = vecSamples.at(minPos);
+	// Minimum time is just the minPos multiplied by the time resolution
+	minTime = minPos*timeBinWidth;
+	minVolt = vecSamples.at(minPos);
 
-// Get the integration range
-int lowInt = minPos>preGate ? minPos - preGate : 0;
-int highInt = lowInt+gate;
-if(highInt >= vecSamples.size()){
-highInt = vecSamples.size()-1;
-lowInt = vecSamples.size()-1-gate;
-}
-/*
-// Make a vector for baseline calculation
-std::vector<float> vBaseline;
-vBaseline.reserve(vecSamples.size()-gate);
-for(auto i=0; i<vecSamples.size(); i++){
-if(i>=lowInt && i<highInt) continue;
-vBaseline.push_back(vecSamples.at(i));
-}
+	// Get the integration range
+	int lowInt = minPos>preGate ? minPos - preGate : 0;
+	int highInt = lowInt+gate;
+	if(highInt >= vecSamples.size()){
+		highInt = vecSamples.size()-1;
+		lowInt = vecSamples.size()-1-gate;
+	}
 
-// Calculate the baseline as a truncated mean of 50% of values outside the gate
-std::sort(vBaseline.begin(),vBaseline.end());
-baseline = 0;
-int nBaseline = 0;
-for(int iBln=vBaseline.size()/4; iBln<(vBaseline.size()-vBaseline.size()/4); iBln++){
-baseline += vBaseline.at(iBln);
-nBaseline++;
-}
-baseline /= (float)nBaseline;
-*/
+	// Make a vector for baseline calculation
+	std::vector<float> vBaseline;
+	vBaseline.reserve(vecSamples.size()-gate);
+	for(auto i=0; i<vecSamples.size(); i++){
+		if(i>=lowInt && i<highInt) continue;
+		vBaseline.push_back(vecSamples.at(i));
+	}
 
-// 1st baseline was with fPeakTime-40
-baseline = accumulate(vecSamples.begin()+5,
-				 vecSamples.begin()+fPeakTime-100,0.0)/
-				(fPeakTime-105);
+	// Calculate the baseline as a truncated mean of 50% of values outside the gate
+	std::sort(vBaseline.begin(),vBaseline.end());
+	baseline = 0;
+	int nBaseline = 0;
+	for(int iBln=vBaseline.size()/4; iBln<(vBaseline.size()-vBaseline.size()/4); iBln++){
+		baseline += vBaseline.at(iBln);
+		nBaseline++;
+	}
+	baseline /= (float)nBaseline;
 
-// Correct the minVolt by subtracting the baseline
-minVolt = baseline-minVolt;
+	/*
+	// 1st baseline was with fPeakTime-40
+	baseline = accumulate(vecSamples.begin()+5,
+						 vecSamples.begin()+fPeakTime-100,0.0)/
+						(fPeakTime-105);
+	*/
+	// Correct the minVolt by subtracting the baseline
+	minVolt = baseline-minVolt;
 
-// Finally integrate the output voltages into a charge in pC
-float charge = 0;
-for(int iSample = lowInt; iSample < highInt; ++iSample){
-charge += baseline - vecSamples.at(iSample);
-}
-charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
-return charge;
+	// Finally integrate the output voltages into a charge in pC
+	float charge = 0;
+	for(int iSample = lowInt; iSample < highInt; ++iSample){
+		charge += baseline - vecSamples.at(iSample);
+	}
+	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
+	return charge;
 }
