@@ -1,3 +1,0 @@
-path,description,channel,pmt,model,voltage,intrange,chisqr,Q1,sigma,pe_res,gain_fit,gain_spe,gain_npe,gain_ped,pv_r_hist,n_pe,baseline
-/Users/hannah/Documents/Alles/Master_Thesis/QA_github/PMTFitting/convert,,1,Hamamatsu,R12860,1200,50,inf,13.6949,13.6947,0.999988,-9.39208e+07,8.54862e+07,2.26038e+09,5.36288e+10,0,0.0789368,1999.71
-/Users/hannah/Documents/Alles/Master_Thesis/QA_github/PMTFitting/convert,,1,Hamamatsu,R12860,1200,50,inf,13.6949,13.6947,0.999988,-9.39208e+07,8.54862e+07,2.26038e+09,5.36288e+10,0,0.0789368,1999.71
