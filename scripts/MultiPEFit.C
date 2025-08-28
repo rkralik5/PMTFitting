@@ -24,45 +24,12 @@
 #include "filename_parser.hpp"
 
 #define PI 3.141592654
-int fImpedance = 50; ///< Impedance in Ohm
 int fNChargeBins = 500; ///< Set the number of bins for the charge histogram
 double e = 1.602e-19;
-int fPreGate = 6; ///< Number of time bins before peak position to start int
-int fGate = 150; ///< Integration range for the waveform integration in time bins
 // TODO: #12 Change the gain to be loaded from somewhere or somethin else smart
 float gain = 4973130; ///< Gain for this specific PMT
 
-// If using CoMPASS outputs need to set these values manually
-#define fResolution 500 ///< Number of ADC bins (=2^ADCResolution)
-#define fVoltLow 0.f ///< Voltage range low
-#define fVoltHigh 2.f ///< Voltage range high
-#define fFrequency 500e6 ///< Frequency of the digitiser in Hz
-#define fWindowSize 600 ///< Size of the waveform (number of time bins)
-
-// TODO: #30 Separate the GetParams script into a separate general file
-/// @brief Get the conversion factor of ADC bins to mV and the size of the waveform in seconds
-/// @param inFile Input ROOT file - if it has a Device TTree, it will use the values from there
-/// @param ADCTomV Return conversion factor from ADC bins to mV
-/// @param timeBinWidth Return width of the time bin in nanoseconds
-/// @param resolution Number of ADC bins (=2^ADCResolution)
-/// @param voltLow Voltage range low
-/// @param voltHigh Voltage range high
-/// @param frequency Frequency of the digitiser in Hz
-/// @param WindowSize Size of the waveform (number of time bins)
-void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
-							 int resolution = -1, float voltLow = -1, float voltHigh = -1, float frequency = -1);
-
-/// @brief Integrate waveform to get a deposited charge
-/// @param Samples Input TArrayS of waveform values (output from waveconvert)
-/// @param ADCTomV Conversion factor from ADC bins to mV
-/// @param timeBinWidth Width of the time bin in nanoseconds
-/// @param preGate Length of time to integrate before the peak in bins of time. Default 5
-/// @param gate Length of time to integrate from preGate in bins of time. Default 50
-/// @return Inegrated charge in pC
-float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
-										  int preGate=5, int gate=50);
-
-/// @brief Trivial funciton to check if a csv file is empty (and needs a header)
+/// @brief Trivial function to check if a csv file is empty (and needs a header)
 bool CheckEmptyFile(std::string outFileName);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -110,38 +77,30 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 						<< PMTInfo.model << " at " << PMTInfo.voltage
 						<< "V on channel " << iChannel << std::endl;
 
-	// Get the parameters of the digitiser
-	float ADCTomV;
-	float timeBinWidth;
-	GetParams(inFile, ADCTomV, timeBinWidth,
-					  fResolution, fVoltLow, fVoltHigh, fFrequency);
-	
-	TTree *tWaves = (TTree*)inFile->Get("Data");
+	TTree *tWaves = (TTree*)inFile->Get("ProcessedData");
 	Short_t Channel = -1; ///< Channel number
-	TArrayS *Samples = new TArrayS; ///< Array of samples (waveform values)
+	Float_t Charge = 0; ///< Integrated charge in pC
 	tWaves->SetBranchAddress("Channel", &Channel);
-	tWaves->SetBranchAddress("Samples", &Samples);
+	tWaves->SetBranchAddress("Charge", &Charge);
 
 	// Calculate the integrated charges
 	int NEntries = tWaves->GetEntries();
 	std::vector<float> vecCharge;
 	vecCharge.reserve(NEntries);
+
 	for (int i = 0; i < NEntries; i++){ // fill histogram
-		if(i%1000 == 0)
-			std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
+		//if(i%1000 == 0)
+		//	std::cout << "Integrated:\t" << i/1000 << "k waveforms\r" << std::flush;
 		tWaves->GetEntry(i);
 		if(Channel != iChannel) continue; // Only get the channel we want
-		vecCharge.push_back(IntegrateCharge(Samples, ADCTomV, timeBinWidth,
-																				fPreGate,	fGate));
+		vecCharge.push_back(Charge);
 	}
-	std::cout << std::endl;
 	float vecAverage = accumulate(vecCharge.begin(),vecCharge.end(),0.0)/vecCharge.size();
-	std::cout << "Vector average is " << vecAverage << std::endl;
-
 	// Find the minimum and maximum to fill a histogram	
 	auto chargeMinmax = minmax_element(vecCharge.begin(),vecCharge.end());
 	float minimum = (float)*chargeMinmax.first;
 	float maximum = (float)*chargeMinmax.second;
+	std::cout << "minimum: " << minimum << " and maximum: " << maximum << std::endl;
 
 	TH1F *hCharge = new TH1F(("charge_"+PMTInfo.model).c_str(),
 													 ";Integrated Charge [pC];Area Normalized (arb. units)", fNChargeBins, minimum, maximum);
@@ -177,12 +136,15 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 	c.Update();
 
 	CornerLabel(PMTInfo.manufacturer+" "+PMTInfo.model);
-
-	std::string plotLabel = parsedFile.path + "/"
-		+ PMTInfo.manufacturer + "_" + PMTInfo.model + "_"
-		+ std::to_string(PMTInfo.voltage) + "V"
-		+ parsedFile.description + ".pdf";
+	std::string plotLabel = Form("%s/%s_%s_%.2fV_%s.pdf",
+															 parsedFile.path.c_str(),
+															 PMTInfo.manufacturer.c_str(),
+															 PMTInfo.model.c_str(), PMTInfo.voltage,
+															 parsedFile.description.c_str());
+	std::cout << "PlotLabel: " << plotLabel << std::endl;
 	c.SaveAs(plotLabel.c_str());
+
+	c.Clear();
 
 	// Lets output this to some file
 	std::ofstream outfile;
@@ -190,99 +152,21 @@ void MultiPEFit(std::string inFileName, std::string outFileName="Output.csv",
 							 std::ios_base::app); // append instead of overwrite
 	// Check if the file is empty and add the header if not
 	if(CheckEmptyFile(outFileName)){
-		outfile << "path,description,channel,pmt,model,voltage,intrange,chisqr,charge_avg,charge_full,sigma_full,charge,sigma,npe_calc,npe_err,npe_calc2\n";
+		outfile << "path,description,channel,pmt,model,voltage,NEntries,chisqr,charge_avg,charge_full,sigma_full,charge,sigma,npe_calc,npe_err,npe_calc2\n";
 	}
 	outfile << parsedFile.path << "," << parsedFile.description << ","
 					<< PMTInfo.channel.value_or(-1) << "," << PMTInfo.manufacturer << ","
 					<< PMTInfo.model << ","	<< PMTInfo.voltage << "," 
-					<< fGate << "," << pmt->GetChisquare()/pmt->GetNDF() << ","
+					<< "," << NEntries << "," << pmt->GetChisquare()/pmt->GetNDF() << ","
 					<< vecAverage << "," << mean << "," << sigma << ","
 					<< pmt->GetParameter(1) << "," << pmt->GetParameter(2) << ","
 					<< NPE_calc << "," << 0.1*NPE_calc << "," << NPE_calc2 << "\n";
 	outfile.close();
+	vecCharge.clear();
 }
 
 ///////////////////////////////////////////////////////////////////////////////
 ///  START OF FUNCTION DEFINITIONS
-void GetParams(TFile *inFile, float &ADCTomV, float &timeBinWidth,
-							 int resolution = -1, float voltLow = -1, float voltHigh = -1, float frequency = -1){
-	TTree *tDevice = (TTree*)inFile->Get("Device");
-	// Check if the TTree was loaded correctly
-	if(tDevice == nullptr){
-		if(resolution == -1 || voltLow == -1 || voltHigh == -1 ||
-			 frequency == -1){
-			std::cerr << "Could not load the Device TTree" << std::endl;
-			std::cerr << "You have to input the values manually" << std::endl;
-			return;
-		}else{
-			ADCTomV = (float)(voltHigh - voltLow)*1000/(float)resolution;
-			timeBinWidth = 1./frequency;
-			return;
-		}
-	}
-
-	tDevice->SetBranchAddress("resolution", &resolution);
-	tDevice->SetBranchAddress("voltLow", &voltLow);
-	tDevice->SetBranchAddress("voltHigh", &voltHigh);
-	tDevice->SetBranchAddress("frequency", &frequency);
-	tDevice->GetEntry(0);
-	ADCTomV = (voltHigh - voltLow)*1000/resolution;
-	timeBinWidth = 1e9/frequency;
-}
-
-float IntegrateCharge(TArrayS *&Samples, float ADCTomV, float timeBinWidth,
-										  int preGate, int gate){
-	// Convert waveform to vector for easier manipulation
-	std::vector<float> vecSamples;
-	vecSamples.reserve(Samples->GetSize());
-	for(int iSample = 0; iSample < Samples->GetSize(); ++iSample){
-		vecSamples.push_back(ADCTomV*Samples->At(iSample));
-	}
-
-	// Find the minimum voltage
-	// Don't look within a 5 bin-wide buffer in beginning and end, which would 
-	// have incomplete signal
-	int minPos = std::distance(vecSamples.begin(),
-														 std::min_element(vecSamples.begin()+5,
-														 									vecSamples.end()-5));
-	float minCharge = vecSamples.at(minPos);
-
-	// Get the integration range
-	int lowInt = minPos>preGate ? minPos - preGate : 0;
-	int highInt = lowInt+gate;
-	if(highInt >= vecSamples.size()){
-		highInt = vecSamples.size()-1;
-		lowInt = vecSamples.size()-1-gate;
-	}
-
-	// Make a vector for baseline calculation
-	std::vector<float> vBaseline;
-	vBaseline.reserve(vecSamples.size()-gate);
-	for(auto i=0; i<vecSamples.size(); i++){
-		if(i>=lowInt && i<highInt) continue;
-		vBaseline.push_back(vecSamples.at(i));
-	}
-
-	// Calculate the baseline as a truncated mean of 50% of values outside the gate
-	std::sort(vBaseline.begin(),vBaseline.end());
-	float baseline = 0;
-	int nBaseline = 0;
-	for(int iBln=vBaseline.size()/4; iBln<(vBaseline.size()-vBaseline.size()/4); iBln++){
-		baseline += vBaseline.at(iBln);
-		nBaseline++;
-	}
-	baseline /= (float)nBaseline;
-
-	// Finally integrate the output voltages into a charge in pC
-	float charge = 0;
-	for(int iSample = lowInt; iSample < highInt; ++iSample){
-		charge += baseline - vecSamples.at(iSample);
-	}
-	charge = charge*timeBinWidth/fImpedance; // Charge is voltage*time/impedance
-
-	return charge;
-}
-
 bool CheckEmptyFile(std::string outFileName){
 	std::ifstream checkfile(outFileName.c_str());
   return checkfile.peek() == std::ifstream::traits_type::eof();
