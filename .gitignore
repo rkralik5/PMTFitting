@@ -1,6 +1,8 @@
 convert/waveconvert
-*.root
-*.o
-*.txt
-*.xml
-*.json
+**/*.root
+**/*.o
+**/*.txt
+**/*.xml
+**/*.json
+**/*.pdf
+**/*.csv
