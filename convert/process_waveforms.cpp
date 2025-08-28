@@ -19,13 +19,8 @@
 
 // Processing parameters (digitizer hardware constants)
 const int fImpedance = 50;          ///< Impedance in Ohm (fixed for digitizer)
-const float fFrequency = 500e6;     ///< Digitizer frequency in Hz (500 MS/s)
-const float fTimeBinWidth = 2.0;    ///< Time bin width in ns (1000/500MHz = 2ns)
-const int fResolutionBits = 14;     ///< ADC resolution in bits (always 14-bit)
-const int fResolution = 16384;      ///< ADC resolution (2^14 = 16384)
-const float fVoltLow = 0.0;         ///< Voltage range low in V (always 0V)
-const float fVoltHigh = 2.0;        ///< Voltage range high in V (always 2V)
-const float fADCTomV = 2000.0 / 16384; ///< ADC to mV conversion (2000mV / 2^14)
+const float fTimeBinWidth = 2.0;    ///< Time bin width in ns (500MHz frequency)
+const float fADCTomV = 2000.0 / 16384; ///< ADC to mV conversion (2000mV / 14 bit resolution)
 
 // Integration parameters
 const int fPreGate = 5;         ///< Number of time bins before peak position to start integration
@@ -35,15 +30,14 @@ const int fGate = 50;           ///< Integration range for the waveform integrat
 /// @param adcSamples Vector of waveform samples in ADC counts
 /// @param minADC Reference to store minimum ADC value
 /// @param minTime Reference to store time of minimum
-/// @param timeBinWidth Width of time bin in ns
 /// @return Position of minimum in the waveform
-int FindMinimum(const std::vector<int>& adcSamples, int& minADC, float& minTime, float timeBinWidth) {
+int FindMinimum(const std::vector<int>& adcSamples, int& minADC, float& minTime) {
     // Don't look within a 5 bin-wide buffer in beginning and end
     auto minIt = std::min_element(adcSamples.begin() + 5, adcSamples.end() - 5);
     int minPos = std::distance(adcSamples.begin(), minIt);
     
     minADC = *minIt;
-    minTime = minPos * timeBinWidth;
+    minTime = minPos * fTimeBinWidth;
     
     return minPos;
 }
@@ -86,12 +80,11 @@ float CalculateBaseline(const std::vector<int>& adcSamples, int minPos, int preG
 /// @param adcSamples Vector of waveform samples in ADC counts
 /// @param baselineADC Baseline in ADC counts
 /// @param minPos Position of minimum in the waveform
-/// @param timeBinWidth Width of time bin in ns
 /// @param preGate Number of bins before minimum for integration start
 /// @param gate Integration gate width in bins
 /// @return Integrated charge in pC
-float IntegrateCharge(const std::vector<int>& adcSamples, float baselineADC, int minPos, 
-                     float timeBinWidth, int preGate, int gate) {
+float IntegrateCharge(const std::vector<int>& adcSamples, float baselineADC,
+                      int minPos, int preGate, int gate) {
     // Get the integration range
     int lowInt = minPos > preGate ? minPos - preGate : 0;
     int highInt = lowInt + gate;
@@ -107,7 +100,7 @@ float IntegrateCharge(const std::vector<int>& adcSamples, float baselineADC, int
     }
     
     // Convert to pC: charge = (ADC * ADCTomV) * time / impedance
-    float charge = chargeADC * fADCTomV * timeBinWidth / fImpedance;
+    float charge = chargeADC * fADCTomV * fTimeBinWidth / fImpedance;
     return charge;
 }
 
@@ -118,39 +111,20 @@ float IntegrateCharge(const std::vector<int>& adcSamples, float baselineADC, int
 /// @param minVolt Reference to store minimum voltage in mV
 /// @param minTime Reference to store time of minimum in ns
 void ProcessSingleWaveform(const std::vector<int>& adcSamples, float& charge,
-													 float& baseline, float& minVolt, float& minTime) {
+						   float& baseline, float& minVolt, float& minTime) {
     // Find minimum position and ADC value
     int minADC;
-    int minPos = FindMinimum(adcSamples, minADC, minTime, fTimeBinWidth);
+    int minPos = FindMinimum(adcSamples, minADC, minTime);
     
     // Calculate baseline in ADC counts
     float baselineADC = CalculateBaseline(adcSamples, minPos, fPreGate, fGate);
     
     // Integrate charge (function handles ADC→mV conversion internally)
-    charge = IntegrateCharge(adcSamples, baselineADC, minPos, fTimeBinWidth, fPreGate, fGate);
-    
+    charge = IntegrateCharge(adcSamples, baselineADC, minPos, fPreGate, fGate);
+
     // Convert ADC values to mV for output
     baseline = baselineADC * fADCTomV;
     minVolt = minADC * fADCTomV;
-}
-
-/// @brief Parse waveform values directly from XML string to vector
-/// @param line String of space separated waveform values from xml file
-/// @param samples Output vector of waveform values (ADC counts)
-/// @param expectedSize Expected number of samples for validation
-void ParseXMLWaveformData(const std::string& line, std::vector<int>& samples, int expectedSize) {
-    samples.clear();
-    samples.reserve(expectedSize);
-    
-    std::stringstream ss(line);
-    std::string value;
-    
-    // Parse space-separated ADC values
-    while(getline(ss, value, ' ')) {
-        if(!value.empty()) {
-            samples.push_back(std::stoi(value));
-        }
-    }
 }
 
 /// @brief Process XML file and convert to ROOT format with processed data
@@ -160,55 +134,23 @@ void ProcessXMLFile(std::string inName, std::string outName) {
 	std::cout << "Processing XML file " << inName << " to " << outName << std::endl;
 	
 	// Populate tree structure pt
-  using boost::property_tree::ptree;
-  ptree pt;
+    using boost::property_tree::ptree;
+    ptree pt;
 
-	std::cout << "Opening XML file..." << std::endl;
+    // Read the XML file into the property tree
 	std::ifstream is(inName);
-	std::cout << "Reading XML content..." << std::endl;
-  read_xml(is, pt);
-	std::cout << "XML content read successfully." << std::endl;
-	TFile *fOut = new TFile(outName.c_str(),"RECREATE");
-
-	// Only read waveform size from XML - other parameters are hardware constants
-	int WSize = -1; ///< Size of the waveform (number of time bins)
+    read_xml(is, pt);
 	
-	// Store hardware constants in Device tree for reference (need non-const copies for ROOT)
-	float frequency = fFrequency;
-	int resolution = fResolution;
-	float voltLow = fVoltLow;
-	float voltHigh = fVoltHigh;
-	float timeBinWidth = fTimeBinWidth;
-	float ADCTomV = fADCTomV;
-	
- 	TTree *tDevice = new TTree("Device","Device Settings");
-  tDevice->Branch("frequency",    &frequency,     "Frequency/F");
-	tDevice->Branch("WSize",        &WSize,         "WaveformSize/I");
-	tDevice->Branch("resolution",   &resolution,    "TimeResolution/I");
-	tDevice->Branch("voltLow",      &voltLow,       "VoltageLow/F");
-	tDevice->Branch("voltHigh",     &voltHigh,      "VoltageHigh/F");
-	tDevice->Branch("timeBinWidth", &timeBinWidth,  "TimeBinWidth/F");
-	tDevice->Branch("ADCTomV",      &ADCTomV,       "ADCTomV/F");
-
-	std::cout << "Reading digitizer settings..." << std::endl;
-
 	// Read only the waveform size from XML settings
+    int WSize = -1; ///< Size of the waveform (number of time bins)
 	BOOST_FOREACH(ptree::value_type const& v, pt.get_child("caendigitizer.settings")){
 		if(v.first == "window"){
 			WSize = v.second.get<int>("<xmlattr>.size", -1);
 		}
 	}
 
-	std::cout << "Waveform size: " << WSize << std::endl;
-	
-	// Validate that we found the waveform size
-	if(WSize <= 0) {
-		std::cerr << "Error: Could not read waveform size from XML file!" << std::endl;
-		fOut->Close();
-		return;
-	}
-	
-	tDevice->Fill(); // Only fill once per file
+    // Create ROOT file
+    TFile *fOut = new TFile(outName.c_str(),"RECREATE");
 
 	// Create processed data tree
 	UShort_t Channel = -1;       ///< Channel number
@@ -219,21 +161,21 @@ void ProcessXMLFile(std::string inName, std::string outName) {
 	Float_t MinVoltage = -1;     ///< Minimum voltage in mV
 	Float_t MinTime = -1;        ///< Time of minimum in ns
 	
-	TTree *tProcessed = new TTree("ProcessedData","Processed Wave Data");
-	tProcessed->Branch("Channel",    &Channel,    "Channel/s");
-	tProcessed->Branch("Timestamp",  &Timestamp,  "Timestamp/L");
-	tProcessed->Branch("Clocktime",  &Clocktime,  "Clocktime/L");
-	tProcessed->Branch("Charge",     &Charge,     "Charge/F");
-	tProcessed->Branch("Baseline",   &Baseline,   "Baseline/F");
-	tProcessed->Branch("MinVoltage", &MinVoltage, "MinVoltage/F");
-	tProcessed->Branch("MinTime",    &MinTime,    "MinTime/F");
+	TTree *tData = new TTree("Data","Processed Wave Data");
+	tData->Branch("Channel",    &Channel,    "Channel/s");
+	tData->Branch("Timestamp",  &Timestamp,  "Timestamp/L");
+	tData->Branch("Clocktime",  &Clocktime,  "Clocktime/L");
+	tData->Branch("Charge",     &Charge,     "Charge/F");
+	tData->Branch("Baseline",   &Baseline,   "Baseline/F");
+	tData->Branch("MinVoltage", &MinVoltage, "MinVoltage/F");
+	tData->Branch("MinTime",    &MinTime,    "MinTime/F");
 
 	// Temporary storage for waveform samples during processing
 	std::vector<int> adcSamples;
 
 	std::cout << "Processing events..." << std::endl;
 
-	// Loop over the events
+	// Loop over events (triggers)
 	BOOST_FOREACH(ptree::value_type const& v, pt.get_child("caendigitizer")){
 		if(v.first == "event"){
 			int id = v.second.get<int>("<xmlattr>.id", -1);
@@ -243,19 +185,30 @@ void ProcessXMLFile(std::string inName, std::string outName) {
 			Timestamp = v.second.get<long long int>("<xmlattr>.timestamp", -1);
 			Clocktime = v.second.get<long long int>("<xmlattr>.clocktime", -1);
 			
-			// Loop over the channels containing a waveform
+			// Loop over all channels containing a waveform
 			for(auto& t : v.second){
 				if(t.first == "trace"){
 					Channel = t.second.get<int>("<xmlattr>.channel", -1);
 					
-					// Parse waveform data directly to vector
-					ParseXMLWaveformData(t.second.data(), adcSamples, WSize);
+					// Parse waveform data to vector
+                    adcSamples.clear();
+                    adcSamples.reserve(WSize);
+
+                    std::stringstream ss(t.second.data()); // Hold waveform data
+                    std::string value; // Hold each separate ADC value
+    
+                    // Parse space-separated ADC values
+                    while(getline(ss, value, ' ')) {
+                        if(!value.empty()) {
+                            adcSamples.push_back(std::stoi(value));
+                        }
+                    }
 					
 					// Process the waveform to extract features
 					ProcessSingleWaveform(adcSamples, Charge, Baseline, MinVoltage, MinTime);
 					
 					// Fill the processed data tree
-					tProcessed->Fill();
+					tData->Fill();
 				}
 			}
 		}
@@ -283,29 +236,10 @@ void ProcessDATFile(std::string inName, std::string outName) {
     uint32_t eventSize;
     infile.read(reinterpret_cast<char*>(&eventSize), sizeof(uint32_t));
     int WSize = (eventSize - 24) / 2; // 24 bytes header, rest is waveform data
-    std::cout << "Waveform size: " << WSize << std::endl;
     infile.seekg(0, std::ios::beg); // Reset to the beginning for reading
 
     // Create ROOT file
     TFile* fOut = new TFile(outName.c_str(), "RECREATE");
-
-    // Store hardware constants in Device tree for reference (need non-const copies for ROOT)
-    float frequency = fFrequency;
-    int resolution = fResolution;
-    float voltLow = fVoltLow;
-    float voltHigh = fVoltHigh;
-    float timeBinWidth = fTimeBinWidth;
-    float ADCTomV = fADCTomV;
-    
-    TTree *tDevice = new TTree("Device","Device Settings");
-    tDevice->Branch("frequency",    &frequency,     "Frequency/F");
-    tDevice->Branch("WSize",        &WSize,         "WaveformSize/I");
-    tDevice->Branch("resolution",   &resolution,    "TimeResolution/I");
-    tDevice->Branch("voltLow",      &voltLow,       "VoltageLow/F");
-    tDevice->Branch("voltHigh",     &voltHigh,      "VoltageHigh/F");
-    tDevice->Branch("timeBinWidth", &timeBinWidth,  "TimeBinWidth/F");
-    tDevice->Branch("ADCTomV",      &ADCTomV,       "ADCTomV/F");
-    tDevice->Fill(); // Only fill once per file
 
     // Create processed data tree
     UShort_t Channel = -1;       ///< Channel number
@@ -316,14 +250,14 @@ void ProcessDATFile(std::string inName, std::string outName) {
     Float_t MinVoltage = -1;     ///< Minimum voltage in mV
     Float_t MinTime = -1;        ///< Time of minimum in ns
     
-    TTree *tProcessed = new TTree("ProcessedData","Processed Wave Data");
-    tProcessed->Branch("Channel",    &Channel,    "Channel/s");
-    tProcessed->Branch("Timestamp",  &Timestamp,  "Timestamp/L");
-    tProcessed->Branch("Clocktime",  &Clocktime,  "Clocktime/L");
-    tProcessed->Branch("Charge",     &Charge,     "Charge/F");
-    tProcessed->Branch("Baseline",   &Baseline,   "Baseline/F");
-    tProcessed->Branch("MinVoltage", &MinVoltage, "MinVoltage/F");
-    tProcessed->Branch("MinTime",    &MinTime,    "MinTime/F");
+    TTree *tData = new TTree("Data","Processed Wave Data");
+    tData->Branch("Channel",    &Channel,    "Channel/s");
+    tData->Branch("Timestamp",  &Timestamp,  "Timestamp/L");
+    tData->Branch("Clocktime",  &Clocktime,  "Clocktime/L");
+    tData->Branch("Charge",     &Charge,     "Charge/F");
+    tData->Branch("Baseline",   &Baseline,   "Baseline/F");
+    tData->Branch("MinVoltage", &MinVoltage, "MinVoltage/F");
+    tData->Branch("MinTime",    &MinTime,    "MinTime/F");
 
     // Allocate space for reading
     uint32_t header[6];
@@ -351,7 +285,7 @@ void ProcessDATFile(std::string inName, std::string outName) {
         ProcessSingleWaveform(adcSamples, Charge, Baseline, MinVoltage, MinTime);
         
         // Fill the processed data tree
-        tProcessed->Fill();
+        tData->Fill();
 
         if (++NSamples % 10000 == 0)
             std::cout << "Event:\t" << NSamples / 1000 << "k\r" << std::flush;
