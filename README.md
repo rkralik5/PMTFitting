@@ -9,9 +9,17 @@ name from [@mahditaani][mahdiTaaniLink] and upgraded by
 [@rkralik5][robertkralik]
 
 The structure of the repository is as follows:
-# [convert](convert)
-Convert outputs from the CAENScope software (in the form of xml files) into
-ROOT files.
+# [Waveform Processing](WaveformProcessing)
+Converts CAEN digitizer readout files (`.xml` from CAENScope, `.dat` from QA DAQ)
+into ROOT files. Two tools are provided:
+
+- **`process_waveforms`** — processes all waveforms in bulk, extracting charge,
+  baseline, and peak voltage into a ROOT TTree
+- **`draw_waveforms`** — draws annotated sample waveforms for visual inspection
+
+Both tools share a common physics library (`waveform_core`) and support
+configurable integration gate and pre-gate widths via command-line options.
+See the [WaveformProcessing README](WaveformProcessing/README.md) for full usage.
 
 # [scripts](scripts)
 Analysis scripts for waveform integration, dark rate analysis, or plotting.
