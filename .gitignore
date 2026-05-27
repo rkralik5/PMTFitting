@@ -6,3 +6,5 @@ convert/waveconvert
 **/*.json
 **/*.pdf
 **/*.csv
+html/
+latex/
