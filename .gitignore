@@ -1,4 +1,7 @@
 convert/waveconvert
+html/
+latex/
+public/
 **/*.root
 **/*.o
 **/*.txt
